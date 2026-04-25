@@ -21,6 +21,8 @@
 | 10 | Euler + bisección para decaimiento | Euler explícito, decaimiento C-14 | [10](notebooks/10_euler_ode_y_biseccion_decaimiento.ipynb) |
 | 11 | Runge-Kutta — 4 problemas | RK4, Secante, Bisección, Newton-Raphson | [11](notebooks/11_runge_kutta_tareas.ipynb) |
 | 12 | RK2/RK4 — enfriamiento + burbuja | Ralston, Runge, Kutta; bisección | [12](notebooks/12_rk2_rk4_enfriamiento_y_burbuja.ipynb) |
+| 13 | Perfil Temp. Solar | Diferencias finitas, convergencia | [13](notebooks/13_diferencias_finitas_temperatura_solar.ipynb) |
+| 14 | ODEs Orden Superior | Método de disparo, reducción de orden | [14](notebooks/14_metodo_disparo_y_odes_orden_superior.ipynb) |
 
 ---
 
@@ -239,6 +241,26 @@ localizar el instante exacto en que $v = 0.99\,v_t$.
 |-----------|-------|
 | $v_t$ | 2.17738 m/s |
 | $t_m$ (bisección, 19 iteraciones) | 0.001228 s |
+
+---
+
+### 13 · Perfil de Temperatura Solar (Diferencias Finitas)
+
+**Tema:** Diferencias finitas para BVP  
+**Notebook:** [`13_diferencias_finitas_temperatura_solar.ipynb`](notebooks/13_diferencias_finitas_temperatura_solar.ipynb)
+
+Resolución de la ecuación de Laplace radial para la temperatura interior del Sol usando diferencias finitas. Se analiza la convergencia para determinar el número de nodos $N$ requerido para un error relativo $<1\%$ y $<0.01\%$.
+
+---
+
+### 14 · Método de Disparo y ODEs de Orden Superior
+
+**Tema:** Método de disparo · Reducción de orden  
+**Notebook:** [`14_metodo_disparo_y_odes_orden_superior.ipynb`](notebooks/14_metodo_disparo_y_odes_orden_superior.ipynb)
+
+Dos ejemplos aplicados de clase:
+1. Resolución de un sistema derivado de una ODE de orden superior usando una aproximación inicial para $z(13)$ y avance con método de Euler.
+2. Reducción de $3y'' + 2y' + 5y = e^{-x}$ a un sistema de primer orden, resolviéndolo en Python y comparando los resultados de los métodos de Euler y Runge-Kutta de 4to orden (RK4).
 
 ---
 
