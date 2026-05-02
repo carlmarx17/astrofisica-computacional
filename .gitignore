@@ -21,7 +21,3 @@ Thumbs.db
 # IDEs
 .vscode/
 .idea/
-
-# Codex
-.codex
-**/.codex
