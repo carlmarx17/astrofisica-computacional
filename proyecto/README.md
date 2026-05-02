@@ -45,6 +45,7 @@ proyecto/
 ├── solucionadores_numericos.py    ← Integradores manuales Euler y RK4 (¡sin scipy ODE!)
 ├── generar_notebook.py            ← Construye el cuaderno Jupyter programáticamente
 │
+├── figuras/                       ← Imágenes generadas desde el código
 ├── viento_solar_parker.ipynb      ← El reporte principal (generado por generar_notebook.py)
 │
 └── README.md                      ← Estás aquí
@@ -119,6 +120,24 @@ Regresa velocidades en **m/s**.
 Implementa dos integradores manuales de EDO. La prohibición de `solve_ivp`
 es intencional: construirlos a mano enseña qué significa realmente "integración numérica".
 
+#### Idea numérica central
+
+La EDO que integra el proyecto es:
+
+$$
+\frac{dv}{dr} =
+\frac{2 v_c^2/r - G M_\odot/r^2 + Q(r)}
+{v - v_c^2/v}
+$$
+
+El punto delicado aparece en $(r_c, v_c)$, donde numerador y denominador se anulan.
+Para evitar esa singularidad numérica, la integración empieza a una distancia relativa
+pequeña $\varepsilon = 10^{-3}$ a cada lado del punto crítico:
+
+1. Una corrida hacia afuera construye la rama supersónica.
+2. Otra corrida hacia adentro construye la rama subsónica.
+3. Luego ambas se unen con el valor exacto del punto sónico.
+
 #### `aceleracion_del_viento(r, v, velocidad_sonica, calentamiento=0.0)`
 Calcula $dv/dr$ en un punto dado — el lado derecho de la EDO.
 El `calentamiento` opcional agrega el término de extensión $Q(r)$ al numerador.
@@ -131,12 +150,22 @@ $$v_{n+1} = v_n + \frac{dv}{dr}\bigg|_{r_n} \cdot \Delta r$$
 Primer orden de precisión. Requiere pasos pequeños (~10⁵ m) para mantenerse estable
 cerca del punto sónico. Rápido y transparente, pero propenso a acumular errores.
 
+Resumen práctico:
+- Usa una sola pendiente local por paso.
+- El error global crece como $\mathcal{O}(\Delta r)$.
+- Es útil como referencia pedagógica y para comparar contra RK4.
+
 #### `los_cuatro_elegantes_rk4(r, v, dr, velocidad_sonica, funcion_calor=None)`
 Un paso del **método de Runge-Kutta de 4to orden**.
 
 Evalúa la pendiente en cuatro sub-puntos estratégicos por paso y toma
 un promedio ponderado: $(k_1 + 2k_2 + 2k_3 + k_4)/6$. Mucho más preciso
 que Euler con el mismo (o mayor) tamaño de paso — puedes usar $\Delta r = 10^6$ m.
+
+Resumen práctico:
+- Corrige la trayectoria con información del inicio, mitad y final del paso.
+- El error global cae como $\mathcal{O}(\Delta r^4)$.
+- Es el método recomendado para producir las curvas finales del proyecto.
 
 #### `lanzar_viento_solar(temperatura, r_min, r_max, tamano_paso, metodo, funcion_calor)`
 El solucionador principal. Maneja el punto crítico singular integrando en dos
@@ -196,6 +225,26 @@ r, v, rho = lanzar_viento_solar(TEMPERATURA_BASE)
 | **Parte 3** | Sensibilidad a la temperatura: $T = [0.5, 1, 2] \times 10^6$ K |
 | **Parte 4** | Variación de tasa de pérdida de masa: prueba que $v(r)$ no depende de $\dot{M}$ |
 | **Parte 5** | Extensión: término de calentamiento exponencial $Q(r) = Q_0 e^{-r/H}$ |
+
+---
+
+## Figuras Generadas
+
+### Solución analítica transónica
+
+![Solución analítica del viento de Parker](figuras/01_solucion_analitica.png)
+
+### Comparación entre Euler y RK4
+
+![Comparación de métodos numéricos](figuras/02_comparacion_metodos.png)
+
+### Sensibilidad a la temperatura coronal
+
+![Sensibilidad a la temperatura](figuras/03_sensibilidad_temperatura.png)
+
+### Flujo de masa y calentamiento
+
+![Flujo de masa y calentamiento](figuras/04_flujo_y_calentamiento.png)
 
 ---
 

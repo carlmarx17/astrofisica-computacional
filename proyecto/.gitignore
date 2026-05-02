@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+venv/
+
+exposicion_proyecto.aux
+exposicion_proyecto.log
+exposicion_proyecto.nav
+exposicion_proyecto.out
+exposicion_proyecto.snm
+exposicion_proyecto.toc

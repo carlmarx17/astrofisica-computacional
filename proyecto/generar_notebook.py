@@ -56,6 +56,32 @@ from solucionadores_numericos import lanzar_viento_solar
 """
 
 
+md_metodos = r"""## Métodos Numéricos Utilizados
+
+La ecuación que resolvemos numéricamente es:
+
+$$
+\frac{dv}{dr} =
+\frac{2 v_c^2/r - G M_\odot/r^2 + Q(r)}
+{v - v_c^2/v}
+$$
+
+El punto $(r_c, v_c)$ es especial porque allí el numerador y el denominador se anulan.
+Para evitar una división indeterminada, el código no arranca exactamente en el punto sónico:
+
+- Se desplaza una fracción pequeña $\varepsilon = 10^{-3}$ por encima de $(r_c, v_c)$ y marcha hacia afuera.
+- Se desplaza la misma fracción por debajo de $(r_c, v_c)$ y marcha hacia adentro.
+- Finalmente une ambas ramas con el valor crítico exacto.
+
+Los métodos comparados son:
+
+- **Euler explícito:** usa una sola pendiente local por paso. Su error global escala como $\mathcal{O}(\Delta r)$.
+- **RK4:** evalúa cuatro pendientes por paso y combina un promedio ponderado. Su error global escala como $\mathcal{O}(\Delta r^4)$.
+
+En este problema RK4 permite pasos mucho más grandes sin deformar la solución transónica.
+"""
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Parte 1 — Solución Analítica
 # ─────────────────────────────────────────────────────────────────────────────
@@ -334,6 +360,7 @@ print(f"Aumento de velocidad               : {aumento:+.1f} %")
 cuaderno['cells'] = [
     nbf.v4.new_markdown_cell(portada),
     nbf.v4.new_code_cell(codigo_importaciones),
+    nbf.v4.new_markdown_cell(md_metodos),
     nbf.v4.new_markdown_cell(md_parte1),
     nbf.v4.new_code_cell(codigo_parte1),
     nbf.v4.new_markdown_cell(md_parte2),
