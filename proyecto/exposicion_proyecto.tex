@@ -195,11 +195,13 @@
     \column{0.56\textwidth}
       \includegraphics[width=\linewidth]{figuras/01_solucion_analitica.png}
     \column{0.40\textwidth}
+      \footnotesize
       \begin{itemize}
-        \item La curva cruza suavemente el punto s\'onico $(r_c,v_c)$.
-        \item A la izquierda del cruce la rama es subs\'onica.
-        \item A la derecha aparece la aceleraci\'on supers\'onica que caracteriza al viento solar.
-        \item Esta es la referencia contra la que se validan Euler y RK4.
+        \item La curva cruza suavemente el punto s\'onico $(r_c,v_c)$, sin quiebres ni discontinuidades.
+        \item A radios peque\~nos domina el r\'egimen subs\'onico: el plasma todav\'ia est\'a fuertemente ligado a la gravedad solar.
+        \item Despu\'es del cruce, la pendiente positiva muestra que la presi\'on t\'ermica logra sostener una aceleraci\'on supers\'onica persistente.
+        \item La gr\'afica confirma que la soluci\'on f\'isica no es est\'atica: el plasma debe escapar y ganar velocidad con el radio.
+        \item Esta curva funciona como referencia para juzgar si los m\'etodos num\'ericos reproducen la transici\'on correcta.
       \end{itemize}
   \end{columns}
 \end{frame}
@@ -286,10 +288,12 @@
     \column{0.58\textwidth}
       \includegraphics[width=\linewidth]{figuras/02_comparacion_metodos.png}
     \column{0.38\textwidth}
+      \footnotesize
       \begin{itemize}
-        \item RK4 sigue casi exactamente la referencia anal\'itica.
-        \item Euler reproduce la tendencia global, pero acumula error con m\'as rapidez.
-        \item La figura muestra por qu\'e un m\'etodo de mayor orden compensa su mayor costo por paso.
+        \item RK4 queda pr\'acticamente superpuesto a la curva de referencia en todo el dominio.
+        \item Euler tambi\'en acelera el flujo, pero se separa gradualmente porque arrastra el error local de cada paso.
+        \item La discrepancia se vuelve m\'as visible lejos del punto inicial, donde los errores acumulados ya modifican la trayectoria.
+        \item La lectura de la figura es num\'erica y f\'isica: ambos m\'etodos captan el mecanismo del viento, pero solo RK4 reproduce con precisi\'on la tasa real de aceleraci\'on.
       \end{itemize}
   \end{columns}
 \end{frame}
@@ -321,10 +325,12 @@
     \column{0.60\textwidth}
       \includegraphics[width=\linewidth]{figuras/03_sensibilidad_temperatura.png}
     \column{0.36\textwidth}
+      \footnotesize
       \begin{itemize}
-        \item La velocidad aumenta con la temperatura coronal.
-        \item La densidad cae de forma distinta porque la aceleraci\'on cambia en cada caso.
-        \item El desplazamiento del punto s\'onico resume el cambio de r\'egimen del flujo.
+        \item Las curvas de velocidad se ordenan con la temperatura: una corona m\'as caliente produce un viento m\'as r\'apido en casi todo radio.
+        \item El cruce s\'onico ocurre antes cuando $T$ aumenta, por eso las curvas calientes entran m\'as r\'apido al r\'egimen supers\'onico.
+        \item En densidad, las soluciones m\'as calientes caen con mayor rapidez porque el mismo flujo de masa se reparte en un plasma que acelera m\'as.
+        \item La gr\'afica muestra que la temperatura no es un detalle de escala: controla directamente la estructura din\'amica del viento.
       \end{itemize}
   \end{columns}
 \end{frame}
@@ -334,10 +340,12 @@
     \column{0.60\textwidth}
       \includegraphics[width=\linewidth]{figuras/04_flujo_y_calentamiento.png}
     \column{0.36\textwidth}
+      \footnotesize
       \begin{itemize}
-        \item Cambiar $\dot{M}$ modifica la densidad, no la forma de $v(r)$.
-        \item Un t\'ermino extra de calentamiento aumenta la velocidad terminal.
-        \item La figura separa con claridad el papel de continuidad y el de la ecuaci\'on de momento.
+        \item Las curvas asociadas a distintos $\dot{M}$ conservan casi la misma velocidad, pero cambian su nivel de densidad.
+        \item Esto confirma que continuidad fija cu\'anta materia fluye, mientras que la ecuaci\'on de movimiento fija c\'omo se acelera.
+        \item Cuando se agrega calentamiento, la curva de velocidad se eleva a grandes radios: hay m\'as energ\'ia disponible para vencer la gravedad.
+        \item La lectura f\'isica es que densidad y aceleraci\'on no responden al mismo mecanismo, aunque aparezcan acopladas en el plasma real.
       \end{itemize}
   \end{columns}
 \end{frame}
@@ -348,6 +356,7 @@
     \item La soluci\'on trans\'onica es una consecuencia de consistencia matem\'atica y de plausibilidad f\'isica.
     \item La velocidad no depende directamente de $\dot{M}$, sino de la competencia entre temperatura y gravedad.
     \item La densidad s\'i depende de $\dot{M}$, porque continuidad fija cu\'anta materia fluye por cada esfera de radio $r$.
+    \item Las gr\'aficas muestran que cada par\'ametro tiene una firma distinta: $T$ desplaza el punto s\'onico y cambia la aceleraci\'on, mientras $\dot{M}$ reescala principalmente la densidad.
     \item En conjunto, el proyecto conecta teor\'ia astrof\'isica, formulaci\'on anal\'itica y validaci\'on computacional.
   \end{itemize}
 \end{frame}
