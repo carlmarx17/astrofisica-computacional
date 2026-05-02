@@ -113,6 +113,17 @@ al método de búsqueda de raíces de Brent sobre `ley_de_conservacion_de_parker
 
 Regresa velocidades en **m/s**.
 
+#### `cazar_velocidad_en_todo_el_espacio_newton_raphson(arreglo_r, temperatura)`
+Resuelve la misma ecuación implícita, pero con **Newton-Raphson** explícito:
+
+$$
+v_{n+1} = v_n - \frac{f(v_n)}{f'(v_n)}
+$$
+
+Usa una semilla simple por rama y luego reutiliza la solución anterior como
+estimado inicial en el siguiente radio. Es la versión más directa del método
+pedido, y se compara en el cuaderno contra la solución con Brent.
+
 ---
 
 ### `solucionadores_numericos.py` — Haciendo la Integral a Mano
@@ -220,7 +231,7 @@ r, v, rho = lanzar_viento_solar(TEMPERATURA_BASE)
 
 | Sección | Qué cubre |
 |---------|-----------|
-| **Parte 1** | Solución semi-analítica por búsqueda de raíces; gráfica de la curva transónica |
+| **Parte 1** | Solución semi-analítica con Brent y Newton-Raphson; comparación de la curva transónica |
 | **Parte 2** | Comparación Euler vs. RK4; tabla de errores relativos en $r = 50 R_\odot$ |
 | **Parte 3** | Sensibilidad a la temperatura: $T = [0.5, 1, 2] \times 10^6$ K |
 | **Parte 4** | Variación de tasa de pérdida de masa: prueba que $v(r)$ no depende de $\dot{M}$ |

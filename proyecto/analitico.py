@@ -105,6 +105,51 @@ def ley_de_conservacion_de_parker(v, r, v_c, r_c):
     return lado_izquierdo - lado_derecho
 
 
+def derivada_ley_de_conservacion_de_parker(v, v_c):
+    """
+    Derivada de la ecuación implícita de Parker respecto a la velocidad.
+
+    La usamos para aplicar Newton-Raphson:
+
+        v_{n+1} = v_n - f(v_n) / f'(v_n)
+    """
+    return (2.0 * v / v_c**2) - (2.0 / v)
+
+
+def encontrar_velocidad_por_newton_raphson(r, v_c, r_c, estimado_inicial,
+                                           tolerancia=1e-10, max_iter=100):
+    """
+    Resuelve la ecuación implícita de Parker en un radio fijo con Newton-Raphson.
+
+    Regresa NaN si el método pisa una región no física (v <= 0), si la derivada
+    se vuelve demasiado pequeña o si no converge en `max_iter`.
+    """
+    v = float(estimado_inicial)
+
+    for _ in range(max_iter):
+        if v <= 0.0:
+            return np.nan
+
+        residuo = ley_de_conservacion_de_parker(v, r, v_c, r_c)
+        derivada = derivada_ley_de_conservacion_de_parker(v, v_c)
+
+        if abs(derivada) < 1e-14:
+            return np.nan
+
+        paso = residuo / derivada
+        v_nueva = v - paso
+
+        if v_nueva <= 0.0:
+            return np.nan
+
+        if abs(v_nueva - v) <= tolerancia * max(1.0, abs(v_nueva)):
+            return v_nueva
+
+        v = v_nueva
+
+    return np.nan
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Paso 3: Cazar la velocidad del viento en cada punto del espacio
 # ─────────────────────────────────────────────────────────────────────────────
@@ -163,5 +208,49 @@ def cazar_velocidad_en_todo_el_espacio(arreglo_r, temperatura):
                 )
             except ValueError:
                 velocidades[i] = np.nan
+
+    return velocidades
+
+
+def cazar_velocidad_en_todo_el_espacio_newton_raphson(arreglo_r, temperatura,
+                                                      tolerancia=1e-10, max_iter=100):
+    """
+    Resuelve v(r) con Newton-Raphson usando la solución previa como semilla.
+
+    Es más simple conceptualmente que Brent, pero también menos robusto:
+    depende de una buena semilla inicial y evita el punto crítico usando
+    el valor exacto v = v_c cuando r = r_c.
+    """
+    v_c = donde_se_vuelve_sonico(temperatura)
+    r_c = radio_sonico(temperatura)
+
+    arreglo_r = np.asarray(arreglo_r, dtype=float)
+    velocidades = np.zeros_like(arreglo_r, dtype=float)
+
+    indices_subsonicos = np.where(arreglo_r < r_c)[0]
+    indices_supersonicos = np.where(arreglo_r > r_c)[0]
+    indices_criticos = np.where(np.isclose(arreglo_r, r_c, rtol=0.0, atol=1e-12 * r_c))[0]
+
+    velocidades[indices_criticos] = v_c
+
+    semilla_subsonica = 0.95 * v_c
+    for i in indices_subsonicos[::-1]:
+        velocidad = encontrar_velocidad_por_newton_raphson(
+            arreglo_r[i], v_c, r_c, semilla_subsonica,
+            tolerancia=tolerancia, max_iter=max_iter
+        )
+        velocidades[i] = velocidad
+        if np.isfinite(velocidad):
+            semilla_subsonica = velocidad
+
+    semilla_supersonica = 1.05 * v_c
+    for i in indices_supersonicos:
+        velocidad = encontrar_velocidad_por_newton_raphson(
+            arreglo_r[i], v_c, r_c, semilla_supersonica,
+            tolerancia=tolerancia, max_iter=max_iter
+        )
+        velocidades[i] = velocidad
+        if np.isfinite(velocidad):
+            semilla_supersonica = velocidad
 
     return velocidades

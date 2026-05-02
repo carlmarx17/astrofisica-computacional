@@ -51,7 +51,12 @@ plt.rcParams.update({'font.size': 12, 'figure.dpi': 110})
 
 # Nuestros módulos personalizados (todos en el mismo directorio)
 from constantes import *
-from analitico import donde_se_vuelve_sonico, radio_sonico, cazar_velocidad_en_todo_el_espacio
+from analitico import (
+    donde_se_vuelve_sonico,
+    radio_sonico,
+    cazar_velocidad_en_todo_el_espacio,
+    cazar_velocidad_en_todo_el_espacio_newton_raphson,
+)
 from solucionadores_numericos import lanzar_viento_solar
 """
 
@@ -96,8 +101,12 @@ $$
 = 4\ln\frac{r}{r_c} + \frac{4 r_c}{r} - 3
 $$
 
-Llamamos a `cazar_velocidad_en_todo_el_espacio()` que aplica el método de Brent en cada radio para
-encontrar la única solución transónica (subsónica para $r < r_c$, supersónica para $r > r_c$).
+Comparamos dos formas de encontrar la raíz en cada radio:
+
+- `Brent`, que ya teníamos y es muy robusto porque encierra la raíz en un intervalo.
+- `Newton-Raphson`, que era lo que pedían y aquí implementamos en su forma más simple usando la solución previa como semilla.
+
+Ambos deben reconstruir la misma rama transónica: subsónica para $r < r_c$ y supersónica para $r > r_c$.
 """
 
 codigo_parte1 = r"""# Malla de 1000 radios de 1 a 100 radios solares (en metros)
@@ -110,13 +119,15 @@ r_c = radio_sonico(TEMPERATURA_BASE)               # radio crítico [m]
 print(f"Velocidad crítica  v_c = {v_c/1e3:.1f} km/s   (esperado ~91 km/s)")
 print(f"Radio crítico      r_c = {r_c/RADIO_SOL:.2f} R☉    (esperado ~5.8 R☉)")
 
-# ── Cazar la solución transónica en cada punto de la malla ───────────────────
-v_exacta = cazar_velocidad_en_todo_el_espacio(malla_r, TEMPERATURA_BASE)
+# ── Cazar la solución transónica con dos buscadores de raíces ─────────────────
+v_brent = cazar_velocidad_en_todo_el_espacio(malla_r, TEMPERATURA_BASE)
+v_newton = cazar_velocidad_en_todo_el_espacio_newton_raphson(malla_r, TEMPERATURA_BASE)
 
 # ── Graficar ─────────────────────────────────────────────────────────────────
 fig, ax = plt.subplots(figsize=(9, 5))
 
-ax.plot(malla_r / RADIO_SOL, v_exacta / 1e3, 'k-', lw=2.5, label='Analítica (rama transónica)')
+ax.plot(malla_r / RADIO_SOL, v_brent / 1e3,  'k-',  lw=2.5, label='Analítica con Brent')
+ax.plot(malla_r / RADIO_SOL, v_newton / 1e3, color='darkorange', ls='--', lw=2.0, label='Analítica con Newton-Raphson')
 ax.plot(r_c / RADIO_SOL, v_c / 1e3, 'ro', ms=10, zorder=5, label='Punto crítico $(r_c, v_c)$')
 
 # Líneas de referencia punteadas en el punto sónico
@@ -134,6 +145,12 @@ ax.legend()
 ax.grid(alpha=0.3)
 plt.tight_layout()
 plt.show()
+
+diferencia_max_kms = np.nanmax(np.abs(v_brent - v_newton)) / 1e3
+diferencia_rel_max = np.nanmax(np.abs(v_brent - v_newton) / v_brent)
+
+print(f"Diferencia máxima |Brent - Newton| = {diferencia_max_kms:.6f} km/s")
+print(f"Diferencia relativa máxima         = {diferencia_rel_max:.2e}")
 """
 
 
@@ -162,7 +179,7 @@ r_eu,  v_eu,  rho_eu  = lanzar_viento_solar(TEMPERATURA_BASE, metodo='euler',  t
 # ── Graficar la comparación ───────────────────────────────────────────────────
 fig, ax = plt.subplots(figsize=(10, 5))
 
-ax.plot(malla_r / RADIO_SOL, v_exacta / 1e3, 'k-',  lw=3,   label='Analítica exacta')
+ax.plot(malla_r / RADIO_SOL, v_brent / 1e3,  'k-',  lw=3,   label='Analítica exacta (Brent)')
 ax.plot(r_rk4,  v_rk4,                       'b--', lw=2,   label='RK4   (h = 1 000 km)')
 ax.plot(r_eu,   v_eu,                         'r:',  lw=2,   label='Euler (h =   100 km)')
 
@@ -176,7 +193,7 @@ plt.tight_layout()
 plt.show()
 
 # ── Errores relativos en r = 50 R☉ ────────────────────────────────────────────
-v_exacta_50 = np.interp(50.0, malla_r / RADIO_SOL, v_exacta / 1e3)
+v_exacta_50 = np.interp(50.0, malla_r / RADIO_SOL, v_brent / 1e3)
 v_rk4_50    = np.interp(50.0, r_rk4, v_rk4)
 v_eu_50     = np.interp(50.0, r_eu,  v_eu)
 
