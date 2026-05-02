@@ -17,7 +17,7 @@ astrofisica-computacional/
 │
 ├── tareas/                        ← Tareas del curso
 │   ├── tareas_resueltas.md        ← Índice unificado con resúmenes
-│   └── notebooks/                 ← Jupyter notebooks de cada tarea (01–12)
+│   └── notebooks/                 ← Jupyter notebooks de cada tarea (01–15)
 │
 ├── proyecto/                      ← Proyecto final: Viento Solar de Parker
 │   ├── README.md                  ← Documentación completa del proyecto
@@ -34,13 +34,14 @@ astrofisica-computacional/
 
 ## 📝 Tareas
 
-12 tareas resueltas que cubren los algoritmos fundamentales del curso:
+15 tareas resueltas que cubren los algoritmos fundamentales del curso:
 
 | Bloque | Temas |
 |--------|-------|
 | **Diferenciación** | Diferencias finitas, convergencia, cancelación catastrófica |
 | **Integración** | Riemann, trapezoide, Simpson 1/3 y 3/8 |
 | **Búsqueda de raíces** | Bisección, Newton-Raphson, secante |
+| **Optimización** | Sección áurea, máximos de funciones unimodales |
 | **EDOs** | Euler, RK2 (Ralston), RK4 (Runge y Kutta) |
 | **Aplicaciones** | Galaxia espiral, Betelgeuse, cohete, decaimiento C-14, viento solar |
 

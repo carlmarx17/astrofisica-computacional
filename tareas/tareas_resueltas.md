@@ -23,6 +23,7 @@
 | 12 | RK2/RK4 — enfriamiento + burbuja | Ralston, Runge, Kutta; bisección | [12](notebooks/12_rk2_rk4_enfriamiento_y_burbuja.ipynb) |
 | 13 | Perfil Temp. Solar | Diferencias finitas, convergencia | [13](notebooks/13_diferencias_finitas_temperatura_solar.ipynb) |
 | 14 | ODEs Orden Superior | Método de disparo, reducción de orden | [14](notebooks/14_metodo_disparo_y_odes_orden_superior.ipynb) |
+| 15 | Temperatura óptima de emisión estelar | Sección áurea, optimización unidimensional | [15](notebooks/15_seccion_aurea_temperatura_optima_emision_estelar.ipynb) |
 
 ---
 
@@ -257,6 +258,29 @@ Resolución de la ecuación de Laplace radial para la temperatura interior del S
 
 **Tema:** Método de disparo · Reducción de orden  
 **Notebook:** [`14_metodo_disparo_y_odes_orden_superior.ipynb`](notebooks/14_metodo_disparo_y_odes_orden_superior.ipynb)
+
+---
+
+### 15 · Temperatura óptima de emisión estelar
+
+**Tema:** Optimización numérica · Sección áurea  
+**Notebook:** [`15_seccion_aurea_temperatura_optima_emision_estelar.ipynb`](notebooks/15_seccion_aurea_temperatura_optima_emision_estelar.ipynb)
+
+Se maximiza la función
+
+$$
+P(T) = \sigma T^4 e^{-T/T_0}\left(1 - e^{-h\nu/(k_B T)}\right)
+$$
+
+en el intervalo $T \in [3000, 50000]$ K usando el método de la **sección áurea**
+con tolerancia $\varepsilon = 50$ K. Además, se grafica la curva $P(T)$ y se
+marca la temperatura óptima hallada.
+
+| Resultado | Valor |
+|-----------|-------|
+| Iteraciones | 15 |
+| $T_\mathrm{opt}$ | $\approx 3.08 \times 10^4$ K |
+| $P(T_\mathrm{opt})$ | $\approx 3.51 \times 10^8$ W m$^{-2}$ |
 
 Dos ejemplos aplicados de clase:
 1. Resolución de un sistema derivado de una ODE de orden superior usando una aproximación inicial para $z(13)$ y avance con método de Euler.
