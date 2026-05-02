@@ -273,5 +273,3 @@ que un flujo supersónico estacionario era físicamente imposible.
 Él tenía razón. Ellos estaban equivocados. 🌬️
 
 ---
-
-*Proyecto para Astrofísica Computacional · Primavera 2026*
