@@ -11,25 +11,33 @@ La magnetohidrodinámica (MHD) describe un plasma como un fluido conductor gober
 
 Las ecuaciones MHD Hall isotérmicas en 2D son:
 
-$$
+
+```math
 \frac{\partial \rho}{\partial t} + \nabla \cdot (\rho \mathbf{v}) = 0
-$$
+```
 
-$$
+
+
+```math
 \frac{\partial (\rho \mathbf{v})}{\partial t} + \nabla \cdot \left( \rho \mathbf{v} \mathbf{v} + P_t \mathbb{I} - \mathbf{B} \mathbf{B} \right) = 0
-$$
+```
 
-$$
+
+
+```math
 \frac{\partial \mathbf{B}}{\partial t} - \nabla \times \left( \mathbf{v} \times \mathbf{B} \right) + \nabla \times \left( \frac{\mathbf{J} \times \mathbf{B}}{n_e e} \right) = 0
-$$
+```
+
 
 donde $P_t = P + B^2/2$ es la presión total, $P = c_s^2 \rho$ (EOS isotérmica), $\mathbf{J} = \nabla \times \mathbf{B}$ es la densidad de corriente, y el término $\mathbf{J} \times \mathbf{B} / (n_e e)$ es el término Hall.
 
 La ecuación de inducción puede reescribirse como:
 
-$$
+
+```math
 \frac{\partial \mathbf{B}}{\partial t} = \nabla \times \left( \mathbf{v}_e \times \mathbf{B} \right), \quad \mathbf{v}_e = \mathbf{v} - \frac{\mathbf{J}}{n_e e}
-$$
+```
+
 
 donde $\mathbf{v}_e$ es la velocidad del fluido electrónico. El término Hall congela las líneas de campo en el fluido electrónico en lugar del iónico, permitiendo fenómenos como la **reconexión magnética rápida** y la propagación de **ondas whistler**.
 
@@ -37,15 +45,19 @@ donde $\mathbf{v}_e$ es la velocidad del fluido electrónico. El término Hall c
 
 La configuración de Harris (Harris, 1962) es un equilibrio MHD unidimensional que consiste en una lámina de corriente donde el campo magnético invierte su dirección:
 
-$$
+
+```math
 \mathbf{B}(y) = B_0 \tanh\left(\frac{y}{l}\right) \hat{\mathbf{x}}, \quad \rho(y) = \rho_0 + \frac{\rho_1}{\cosh^2(y/l)}
-$$
+```
+
 
 Para desencadenar la reconexión, se superpone una perturbación magnética de la forma:
 
-$$
+
+```math
 \delta B_x = -\Psi_0 k_y \sin(k_y y) \cos(2k_x x), \quad \delta B_y = 2\Psi_0 k_x \sin(2k_x x) \cos(k_y y)
-$$
+```
+
 
 ### 1.3 El Efecto Hall en la Reconexión
 
@@ -111,9 +123,11 @@ Las salidas muestran de forma clara el proceso de reconexion magnetica en una la
 
 **Flujo reconectado.** La primera grafica de la Figura 1 muestra que el flujo reconectado crece muy poco al inicio y luego aumenta rapidamente entre $t\approx25$ y $t\approx45$. Esto indica una fase de crecimiento fuerte de la reconexion. Despues de $t\approx45$, el flujo se estabiliza alrededor de $\psi_{\rm rec}\approx4.4-4.8$. Fisicamente, la evolucion puede resumirse como:
 
-$$
+
+```math
 \text{inicio lento} \rightarrow \text{reconexion rapida} \rightarrow \text{saturacion no lineal}.
-$$
+```
+
 
 Este comportamiento es razonable para una lamina de corriente que se rompe y forma islas magneticas.
 
@@ -125,21 +139,27 @@ Este comportamiento es razonable para una lamina de corriente que se rompe y for
 
 La secuencia fisica global es:
 
-$$
+
+```math
 \text{lamina de corriente} \rightarrow \text{intensificacion de } J_z \rightarrow \text{ruptura de la lamina} \rightarrow \text{X-points e islas magneticas} \rightarrow \text{saturacion del flujo reconectado}.
-$$
+```
+
 
 Un detalle importante es que la cantidad llamada flujo reconectado en esta entrega se calcula como
 
-$$
+
+```math
 \int_0^{L_x/2}|B_y(x,0)|\,dx,
-$$
+```
+
 
 lo cual funciona como indicador global de reconexion, pero no es exactamente el flujo reconectado clasico. Para un analisis mas formal se deberia reconstruir el potencial vectorial $A_z$ y medir
 
-$$
+
+```math
 \psi_{\rm rec}=A_z(O)-A_z(X),
-$$
+```
+
 
 donde $O$ es el centro de la isla y $X$ el punto de reconexion.
 
@@ -221,6 +241,47 @@ La simulacion principal se ejecuto con PLUTO hasta $t=60$. Las salidas registrad
 
 **Que se corrio.** Primero se configuro y ejecuto PLUTO para la corrida Hall MHD principal. Luego se corrio `analysis/plot_results.py` para producir las figuras por snapshot. Despues se ejecuto `analysis/analysis.py` para calcular los diagnosticos cuantitativos usados en el reporte. Finalmente, `hall_mhd_harris.py` se uso como reproduccion Python del setup y como apoyo para comparar la condicion inicial y las cantidades derivadas.
 
+Los comandos reproducibles usados para reconstruir el flujo de trabajo son:
+
+```bash
+# Desde la raiz del repositorio
+REPO=$PWD
+
+# Carpeta del problema dentro de este repositorio
+cd proyecto2/Current_Sheet
+
+# Archivos usados para configurar la corrida Hall MHD
+cp definitions_01.h definitions.h
+cp pluto_01.ini pluto.ini
+
+# Configuracion/compilacion/ejecucion con PLUTO.
+# PLUTO_DIR debe apuntar a la instalacion local de PLUTO.
+cd "$PLUTO_DIR/Test_Problems/MHD/Hall_MHD/Current_Sheet"
+cp "$REPO/proyecto2/Current_Sheet/definitions_01.h" definitions.h
+cp "$REPO/proyecto2/Current_Sheet/pluto_01.ini" pluto.ini
+cp "$REPO/proyecto2/Current_Sheet/init.c" init.c
+python "$PLUTO_DIR/setup.py"
+make
+./pluto -i pluto.ini | tee pluto_run.log
+
+# Copia minima de metadatos de corrida para reproducibilidad
+mkdir -p "$REPO/proyecto2/Current_Sheet/pluto_sim"
+cp definitions.h pluto.ini init.c vtk.out dbl.out pluto_run.log "$REPO/proyecto2/Current_Sheet/pluto_sim/"
+
+# Postproceso con pyPLUTO: paneles por snapshot
+cd "$REPO"
+python proyecto2/Current_Sheet/analysis/plot_results.py
+
+# Diagnosticos cuantitativos y figuras finales del reporte
+python proyecto2/Current_Sheet/analysis/analysis.py
+
+# Reproduccion Python del setup y graficas auxiliares
+cd proyecto2/Current_Sheet/python_reproduction
+python hall_mhd_harris.py
+```
+
+En la copia entregada, `pluto_sim/` conserva los archivos minimos para documentar la corrida (`pluto.ini`, `definitions.h`, `init.c`, `vtk.out`, `dbl.out`). Los dumps crudos `.vtk/.dbl` y el ejecutable `pluto` se dejaron fuera del repositorio porque son artefactos pesados que pueden regenerarse con los comandos anteriores.
+
 **Que se grafico.** Se graficaron las variables fisicas $\rho$, $P$, $v_x$, $v_y$, $B_x$, $B_y$, $|B|$ y $J_z$ en varios tiempos. Ademas se hicieron curvas temporales del flujo reconectado, de $\max |J_z|$ y del error $||\nabla\cdot B||_2$. Para la validacion Python vs PLUTO se compararon mapas de $\rho$, $B_x$ y $B_y$ en $t=0$ y se calcularon errores relativos L2.
 
 ### 3.3 Resultados del Análisis
@@ -259,15 +320,19 @@ El flujo reconectado crece de $0.040$ en $t=0$ a $4.552$ en $t=60$. El crecimien
 
 Una medida mas local de reconexion puede obtenerse mediante el potencial vectorial $A_z$:
 
-$$
+
+```math
 \psi(t)=A_z(X)-A_z(O),
-$$
+```
+
 
 donde $X$ y $O$ representan, respectivamente, el punto X de reconexion y el centro de una isla magnetica. Otra opcion fisica es medir la tasa de reconexion con el campo electrico fuera del plano en el punto X:
 
-$$
+
+```math
 E_z = -v_xB_y + v_yB_x + \eta J_z + E_{z,\mathrm{Hall}}.
-$$
+```
+
 
 En esta entrega se usa el flujo reconectado integrado sobre el eje medio como diagnostico global porque se calcula directamente desde las salidas VTK. El calculo de $A_z(X)-A_z(O)$ y de $E_z$ local queda como extension natural para comparar cuantitativamente Hall MHD contra una corrida ideal o resistiva.
 
