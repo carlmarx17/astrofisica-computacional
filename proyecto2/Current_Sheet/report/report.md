@@ -93,6 +93,56 @@ El diagnostico principal se calculo como el flujo reconectado sobre el eje medio
 
 Se generaron 13 snapshots cubriendo $t=0$ a $t=60$ con todas las variables fisicas ($\rho$, $P$, $v_x$, $v_y$, $B_x$, $B_y$, $|\mathbf{B}|$). El panel `analysis/figs/pluto_final_all_variables.png` resume el estado final e incluye tambien $J_z=\partial_x B_y-\partial_y B_x$. Como la salida VTK se guardo cada 5 unidades de tiempo, el snapshot mas cercano a $t=57$ es $t=55$; la figura `analysis/figs/jz_fieldlines_t55.png` muestra $J_z$ con lineas de campo magnetico.
 
+![Diagnosticos temporales: flujo reconectado, corriente maxima y divergencia de B](../analysis/figs/diagnostics_timeseries.png)
+
+**Figura 1.** Diagnosticos temporales de la corrida Hall MHD. El flujo reconectado crece despues de $t\approx20$, la corriente maxima $|J_z|$ alcanza su mayor valor cerca de $t\approx25$, y el error solenoidal $||\nabla\cdot\mathbf{B}||_2$ permanece acotado durante toda la evolucion.
+
+![Estado final con todas las variables fisicas](../analysis/figs/pluto_final_all_variables.png)
+
+**Figura 2.** Estado final en $t=60$ para densidad, presion, velocidades, campo magnetico, modulo de campo y corriente $J_z$.
+
+![Corriente y lineas de campo](../analysis/figs/jz_fieldlines_t55.png)
+
+**Figura 3.** Densidad de corriente $J_z$ con lineas de campo magnetico. El snapshot mas cercano al tiempo de referencia $t=57$ es $t=55$ por la cadencia de salida.
+
+### 2.4 Evolucion fisica por tiempos
+
+La evolucion visual es coherente con una lamina de corriente de Harris en Hall MHD: inicia en equilibrio, la perturbacion deforma la lamina, aparece una region tipo X-point, crece la reconexion y finalmente se desarrolla una fase no lineal con estructuras magneticas tipo islas/plasmoides.
+
+![Snapshot t=0](../plots/hall_cs_0000_t0.0.png)
+
+**$t=0$.** La condicion inicial esta bien representada. La densidad $\rho$ y la presion $P=c_s^2\rho$ se concentran alrededor de $y=0$, donde esta la lamina de corriente. El campo $B_x$ cambia de signo al cruzar $y=0$, como corresponde a una configuracion de Harris. La corriente $J_z$ aparece concentrada en la lamina porque $B_x$ varia bruscamente en la direccion $y$. Las velocidades $v_x$ y $v_y$ son practicamente nulas, y $B_y$ contiene solo la perturbacion inicial que sirve como semilla de reconexion.
+
+![Snapshot t=20](../plots/hall_cs_0004_t20.0.png)
+
+**$t=20$.** La reconexion empieza a ser visible. La lamina de densidad y presion se curva, aparecen velocidades en ambas direcciones y $B_y$ deja de ser una perturbacion puramente inicial para mostrar estructura de campo reconectado. La corriente $J_z$ todavia conserva una banda elongada sobre $y=0$, pero ya se modifica cerca del centro del dominio, indicando la formacion de una region tipo X-point.
+
+![Snapshot t=30](../plots/hall_cs_0006_t30.0.png)
+
+**$t=30$.** La reconexion esta mas desarrollada. La lamina se estrecha en la zona central, la densidad y presion se redistribuyen hacia regiones de salida, y $|B|$ muestra zonas de campo reducido alrededor de la region central. La corriente $J_z$ deja de ser una banda uniforme y se concentra en estructuras mas localizadas, senal de reorganizacion de la capa de corriente.
+
+![Snapshot t=50](../plots/hall_cs_0010_t50.0.png)
+
+**$t=50$.** El sistema entra en una fase no lineal. La densidad ya no aparece como una lamina continua sino como acumulaciones localizadas; $B_y$ y $|B|$ muestran estructuras cerradas o tipo isla magnetica; y $J_z$ adquiere una geometria compleja, compatible con regiones tipo X y O. Las velocidades tambien son mas estructuradas, lo que indica que el plasma ya no responde como una perturbacion lineal simple.
+
+### 2.5 Costo computacional y salida de datos
+
+La corrida PLUTO fue ejecutada en un solo procesador sobre una malla uniforme $256\times128$. El log de ejecucion registra los siguientes datos:
+
+| Cantidad | Valor |
+|----------|------:|
+| Tiempo fisico simulado | $t=60$ |
+| Pasos hidrodinamicos/MHD | 194828 |
+| Snapshots VTK | 13 |
+| Intervalo de salida VTK | $\Delta t=5$ |
+| Memoria asignada | 11.22 MB |
+| Tiempo de ejecucion medido por PLUTO | 1 h 22 min 39 s |
+| Tiempo promedio por paso | $2.55\times10^{-2}$ s |
+| Inicio registrado | 18 Jun 2026, 16:46:55 |
+| Fin registrado | 18 Jun 2026, 18:09:34 |
+
+El tiempo de compilacion no fue medido con una herramienta externa como `time make`, por lo que no se reporta como benchmark cuantitativo. Para una comparacion reproducible de rendimiento, una mejora simple seria ejecutar la compilacion y la simulacion con `/usr/bin/time -p` y guardar esos resultados junto con el log de PLUTO.
+
 ---
 
 ## 3. Reproducción en Python
@@ -140,6 +190,20 @@ Esto confirma que el setup independiente en Python reproduce los campos iniciale
 ### 4.2 Flujo reconectado y corriente
 
 El flujo reconectado crece de $0.040$ en $t=0$ a $4.552$ en $t=60$. El crecimiento se acelera despues de $t\approx20$, alcanza valores cercanos a $4.8$ alrededor de $t=45$, y luego oscila levemente. La corriente maxima aumenta al inicio de la reconexion y alcanza $\max |J_z|\approx3.08$ en $t\approx25$, consistente con la formacion de una capa de corriente intensa.
+
+Una medida mas local de reconexion puede obtenerse mediante el potencial vectorial $A_z$:
+
+$$
+\psi(t)=A_z(X)-A_z(O),
+$$
+
+donde $X$ y $O$ representan, respectivamente, el punto X de reconexion y el centro de una isla magnetica. Otra opcion fisica es medir la tasa de reconexion con el campo electrico fuera del plano en el punto X:
+
+$$
+E_z = -v_xB_y + v_yB_x + \eta J_z + E_{z,\mathrm{Hall}}.
+$$
+
+En esta entrega se usa el flujo reconectado integrado sobre el eje medio como diagnostico global porque se calcula directamente desde las salidas VTK. El calculo de $A_z(X)-A_z(O)$ y de $E_z$ local queda como extension natural para comparar cuantitativamente Hall MHD contra una corrida ideal o resistiva.
 
 ### 4.3 Perfiles 1D y estructura final
 
