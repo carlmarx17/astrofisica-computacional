@@ -21,3 +21,7 @@ Thumbs.db
 # IDEs
 .vscode/
 .idea/
+
+# Proyecto 2: copia local de PLUTO y casos no usados
+proyecto2/PLUTO/
+proyecto2/Whistler_Waves/
