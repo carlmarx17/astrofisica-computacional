@@ -12,21 +12,21 @@ La magnetohidrodinámica (MHD) describe un plasma como un fluido conductor gober
 Las ecuaciones MHD Hall isotérmicas en 2D son:
 
 
-```math
+$$
 \frac{\partial \rho}{\partial t} + \nabla \cdot (\rho \mathbf{v}) = 0
-```
+$$
 
 
 
-```math
+$$
 \frac{\partial (\rho \mathbf{v})}{\partial t} + \nabla \cdot \left( \rho \mathbf{v} \mathbf{v} + P_t \mathbb{I} - \mathbf{B} \mathbf{B} \right) = 0
-```
+$$
 
 
 
-```math
+$$
 \frac{\partial \mathbf{B}}{\partial t} - \nabla \times \left( \mathbf{v} \times \mathbf{B} \right) + \nabla \times \left( \frac{\mathbf{J} \times \mathbf{B}}{n_e e} \right) = 0
-```
+$$
 
 
 donde $P_t = P + B^2/2$ es la presión total, $P = c_s^2 \rho$ (EOS isotérmica), $\mathbf{J} = \nabla \times \mathbf{B}$ es la densidad de corriente, y el término $\mathbf{J} \times \mathbf{B} / (n_e e)$ es el término Hall.
@@ -34,9 +34,9 @@ donde $P_t = P + B^2/2$ es la presión total, $P = c_s^2 \rho$ (EOS isotérmica)
 La ecuación de inducción puede reescribirse como:
 
 
-```math
+$$
 \frac{\partial \mathbf{B}}{\partial t} = \nabla \times \left( \mathbf{v}_e \times \mathbf{B} \right), \quad \mathbf{v}_e = \mathbf{v} - \frac{\mathbf{J}}{n_e e}
-```
+$$
 
 
 donde $\mathbf{v}_e$ es la velocidad del fluido electrónico. El término Hall congela las líneas de campo en el fluido electrónico en lugar del iónico, permitiendo fenómenos como la **reconexión magnética rápida** y la propagación de **ondas whistler**.
@@ -46,17 +46,17 @@ donde $\mathbf{v}_e$ es la velocidad del fluido electrónico. El término Hall c
 La configuración de Harris (Harris, 1962) es un equilibrio MHD unidimensional que consiste en una lámina de corriente donde el campo magnético invierte su dirección:
 
 
-```math
+$$
 \mathbf{B}(y) = B_0 \tanh\left(\frac{y}{l}\right) \hat{\mathbf{x}}, \quad \rho(y) = \rho_0 + \frac{\rho_1}{\cosh^2(y/l)}
-```
+$$
 
 
 Para desencadenar la reconexión, se superpone una perturbación magnética de la forma:
 
 
-```math
+$$
 \delta B_x = -\Psi_0 k_y \sin(k_y y) \cos(2k_x x), \quad \delta B_y = 2\Psi_0 k_x \sin(2k_x x) \cos(k_y y)
-```
+$$
 
 
 ### 1.3 El Efecto Hall en la Reconexión
@@ -124,9 +124,9 @@ Las salidas muestran de forma clara el proceso de reconexion magnetica en una la
 **Flujo reconectado.** La primera grafica de la Figura 1 muestra que el flujo reconectado crece muy poco al inicio y luego aumenta rapidamente entre $t\approx25$ y $t\approx45$. Esto indica una fase de crecimiento fuerte de la reconexion. Despues de $t\approx45$, el flujo se estabiliza alrededor de $\psi_{\rm rec}\approx4.4-4.8$. Fisicamente, la evolucion puede resumirse como:
 
 
-```math
+$$
 \text{inicio lento} \rightarrow \text{reconexion rapida} \rightarrow \text{saturacion no lineal}.
-```
+$$
 
 
 Este comportamiento es razonable para una lamina de corriente que se rompe y forma islas magneticas.
@@ -140,25 +140,25 @@ Este comportamiento es razonable para una lamina de corriente que se rompe y for
 La secuencia fisica global es:
 
 
-```math
+$$
 \text{lamina de corriente} \rightarrow \text{intensificacion de } J_z \rightarrow \text{ruptura de la lamina} \rightarrow \text{X-points e islas magneticas} \rightarrow \text{saturacion del flujo reconectado}.
-```
+$$
 
 
 Un detalle importante es que la cantidad llamada flujo reconectado en esta entrega se calcula como
 
 
-```math
+$$
 \int_0^{L_x/2}|B_y(x,0)|\,dx,
-```
+$$
 
 
 lo cual funciona como indicador global de reconexion, pero no es exactamente el flujo reconectado clasico. Para un analisis mas formal se deberia reconstruir el potencial vectorial $A_z$ y medir
 
 
-```math
+$$
 \psi_{\rm rec}=A_z(O)-A_z(X),
-```
+$$
 
 
 donde $O$ es el centro de la isla y $X$ el punto de reconexion.
@@ -321,17 +321,17 @@ El flujo reconectado crece de $0.040$ en $t=0$ a $4.552$ en $t=60$. El crecimien
 Una medida mas local de reconexion puede obtenerse mediante el potencial vectorial $A_z$:
 
 
-```math
+$$
 \psi(t)=A_z(X)-A_z(O),
-```
+$$
 
 
 donde $X$ y $O$ representan, respectivamente, el punto X de reconexion y el centro de una isla magnetica. Otra opcion fisica es medir la tasa de reconexion con el campo electrico fuera del plano en el punto X:
 
 
-```math
+$$
 E_z = -v_xB_y + v_yB_x + \eta J_z + E_{z,\mathrm{Hall}}.
-```
+$$
 
 
 En esta entrega se usa el flujo reconectado integrado sobre el eje medio como diagnostico global porque se calcula directamente desde las salidas VTK. El calculo de $A_z(X)-A_z(O)$ y de $E_z$ local queda como extension natural para comparar cuantitativamente Hall MHD contra una corrida ideal o resistiva.
