@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+
+# Artefactos pesados/regenerables de PLUTO.
+Current_Sheet/pluto_sim/data.*.vtk
+Current_Sheet/pluto_sim/data.*.dbl
+Current_Sheet/pluto_sim/grid.out
+Current_Sheet/pluto_sim/pluto
+Current_Sheet/pluto_sim/pluto_run.log
+
+# Salidas regenerables con tiempos invalidos de pruebas exploratorias.
+Current_Sheet/python_reproduction/output/*_tnan.png
