@@ -9,6 +9,10 @@ from pathlib import Path
 import os
 import sys
 
+MPLCONFIG = Path('/tmp') / 'matplotlib-cache'
+MPLCONFIG.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault('MPLCONFIGDIR', str(MPLCONFIG))
+
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -56,8 +60,10 @@ def load_pluto_snapshot(run_dir, snapshot):
         'rho': np.asarray(d.rho),
         'vx': np.asarray(d.vx1),
         'vy': np.asarray(d.vx2),
+        'vz': np.asarray(d.vx3),
         'Bx': np.asarray(d.Bx1),
         'By': np.asarray(d.Bx2),
+        'Bz': np.asarray(d.Bx3),
     }
 
 
@@ -77,8 +83,10 @@ def harris_initial(x, y):
         'rho': rho,
         'vx': np.zeros_like(rho),
         'vy': np.zeros_like(rho),
+        'vz': np.zeros_like(rho),
         'Bx': Bx,
         'By': By,
+        'Bz': np.zeros_like(rho),
     }
 
 
@@ -90,6 +98,13 @@ def current_jz(Bx, By, x, y):
     dby_dx = np.gradient(By, x, axis=0, edge_order=2)
     dbx_dy = np.gradient(Bx, y, axis=1, edge_order=2)
     return dby_dx - dbx_dy
+
+
+def current_components(Bx, By, Bz, x, y):
+    jx = np.gradient(Bz, y, axis=1, edge_order=2)
+    jy = -np.gradient(Bz, x, axis=0, edge_order=2)
+    jz = current_jz(Bx, By, x, y)
+    return jx, jy, jz
 
 
 def div_b(Bx, By, x, y):
@@ -105,6 +120,37 @@ def reconnected_flux_midplane(By, x, y):
     signed = np.trapezoid(By[mask, j0], x[mask])
     unsigned = np.trapezoid(np.abs(By[mask, j0]), x[mask])
     return signed, unsigned
+
+
+def vector_potential_az(Bx, By, x, y):
+    """Reconstruct Az from Bx=dAz/dy and By=-dAz/dx using a fixed path."""
+    az = np.zeros_like(Bx)
+    for j in range(1, len(y)):
+        dy = y[j] - y[j - 1]
+        az[0, j] = az[0, j - 1] + 0.5 * (Bx[0, j] + Bx[0, j - 1]) * dy
+    for j in range(len(y)):
+        for i in range(1, len(x)):
+            dx = x[i] - x[i - 1]
+            az[i, j] = az[i - 1, j] - 0.5 * (By[i, j] + By[i - 1, j]) * dx
+    return az
+
+
+def ox_points_from_az(Az, x, y):
+    j0 = int(np.argmin(np.abs(y)))
+    i_o = int(np.argmin(np.abs(x)))
+    mid = Az[:, j0]
+    left = np.where((x > -0.45 * (x.max() - x.min())) & (x < -1.0))[0]
+    right = np.where((x < 0.45 * (x.max() - x.min())) & (x > 1.0))[0]
+    i_x_left = int(left[np.argmax(mid[left])]) if len(left) else i_o
+    i_x_right = int(right[np.argmax(mid[right])]) if len(right) else i_o
+    i_x = i_x_left if abs(Az[i_x_left, j0] - Az[i_o, j0]) > abs(Az[i_x_right, j0] - Az[i_o, j0]) else i_x_right
+    return {
+        'O': (i_o, j0, float(x[i_o]), float(y[j0]), float(Az[i_o, j0])),
+        'X_left': (i_x_left, j0, float(x[i_x_left]), float(y[j0]), float(Az[i_x_left, j0])),
+        'X_right': (i_x_right, j0, float(x[i_x_right]), float(y[j0]), float(Az[i_x_right, j0])),
+        'X_used': (i_x, j0, float(x[i_x]), float(y[j0]), float(Az[i_x, j0])),
+        'psi_az': float(abs(Az[i_o, j0] - Az[i_x, j0])),
+    }
 
 
 def rel_l2(a, b):
@@ -181,17 +227,58 @@ def plot_final_state(d):
 
 def plot_jz_fieldlines(d):
     jz = current_jz(d['Bx'], d['By'], d['x'], d['y'])
+    az = vector_potential_az(d['Bx'], d['By'], d['x'], d['y'])
+    points = ox_points_from_az(az, d['x'], d['y'])
     vmax = float(np.percentile(np.abs(jz), 99.5))
     fig, ax = plt.subplots(figsize=(10, 5))
     mesh = ax.pcolormesh(d['x'], d['y'], jz.T, shading='auto', cmap='RdBu_r', vmin=-vmax, vmax=vmax)
     fig.colorbar(mesh, ax=ax, label=r'$J_z = \partial_x B_y - \partial_y B_x$')
     ax.streamplot(d['x'], d['y'], d['Bx'].T, d['By'].T, color='k', density=1.4, linewidth=0.65, arrowsize=0.8)
+    for label, marker, color in [('O', 'o', 'gold'), ('X_left', 'x', 'lime'), ('X_right', 'x', 'lime')]:
+        _, _, px, py, _ = points[label]
+        if marker == 'x':
+            ax.scatter(px, py, marker=marker, s=95, c=color, linewidths=1.4, zorder=5)
+        else:
+            ax.scatter(px, py, marker=marker, s=95, c=color, edgecolors='k', linewidths=0.8, zorder=5)
+    ax.annotate('O-point', xy=(points['O'][2], points['O'][3]), xytext=(points['O'][2] + 0.8, points['O'][3] + 0.8),
+                arrowprops={'arrowstyle': '->', 'color': 'k', 'lw': 1.0}, fontsize=9)
+    ax.annotate('X-points', xy=(points['X_right'][2], points['X_right'][3]), xytext=(points['X_right'][2] - 0.6, points['X_right'][3] + 1.0),
+                arrowprops={'arrowstyle': '->', 'color': 'k', 'lw': 1.0}, fontsize=9, ha='right')
     ax.set_xlabel('x')
     ax.set_ylabel('y')
-    ax.set_title(f'Current density and magnetic field lines (nearest to t=57: t={d["time"]:.1f})')
+    ax.set_title(f'Current density and field lines: O/X structure (t={d["time"]:.1f})')
     ax.set_aspect('equal')
     fig.tight_layout()
     fig.savefig(OUT / f'jz_fieldlines_t{d["time"]:.0f}.png', dpi=160)
+    plt.close(fig)
+
+
+def plot_hall_signature(d):
+    jx, jy, jz = current_components(d['Bx'], d['By'], d['Bz'], d['x'], d['y'])
+    rho = np.maximum(d['rho'], 1e-12)
+    hall_z = (jx * d['By'] - jy * d['Bx']) / rho
+    electron_drift = np.sqrt((jx / rho) ** 2 + (jy / rho) ** 2 + (jz / rho) ** 2)
+
+    fields = [
+        (d['Bz'], r'$B_z$', 'RdBu_r'),
+        (hall_z, r'$(J\times B)_z/\rho$', 'RdBu_r'),
+        (electron_drift, r'$|\mathbf{v}_e-\mathbf{v}|=|\mathbf{J}|/\rho$', 'magma'),
+    ]
+    fig, axes = plt.subplots(1, 3, figsize=(16, 4.8))
+    for ax, (data, label, cmap) in zip(axes, fields):
+        kwargs = {}
+        if np.nanmin(data) < 0 and np.nanmax(data) > 0:
+            vmax = float(np.percentile(np.abs(data), 99.5))
+            kwargs.update({'vmin': -vmax, 'vmax': vmax})
+        mesh = ax.pcolormesh(d['x'], d['y'], data.T, shading='auto', cmap=cmap, **kwargs)
+        fig.colorbar(mesh, ax=ax, shrink=0.82)
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_title(label)
+        ax.set_aspect('equal')
+    fig.suptitle(f'Hall-specific diagnostics (t={d["time"]:.1f})')
+    fig.tight_layout()
+    fig.savefig(OUT / 'hall_signature_t60.png', dpi=150)
     plt.close(fig)
 
 
@@ -231,10 +318,14 @@ def main():
 
     rows = []
     for d in data:
-        jz = current_jz(d['Bx'], d['By'], d['x'], d['y'])
+        jx, jy, jz = current_components(d['Bx'], d['By'], d['Bz'], d['x'], d['y'])
         divergence = div_b(d['Bx'], d['By'], d['x'], d['y'])
         signed, unsigned = reconnected_flux_midplane(d['By'], d['x'], d['y'])
-        bmag = np.sqrt(d['Bx'] ** 2 + d['By'] ** 2)
+        bmag = np.sqrt(d['Bx'] ** 2 + d['By'] ** 2 + d['Bz'] ** 2)
+        rho = np.maximum(d['rho'], 1e-12)
+        hall_z = (jx * d['By'] - jy * d['Bx']) / rho
+        az = vector_potential_az(d['Bx'], d['By'], d['x'], d['y'])
+        ox = ox_points_from_az(az, d['x'], d['y'])
         rows.append({
             'snapshot': d['n'],
             'time': float(d['time']),
@@ -247,10 +338,14 @@ def main():
             'rho_min': float(np.min(d['rho'])),
             'rho_max': float(np.max(d['rho'])),
             'B_abs_max': float(np.max(bmag)),
+            'Bz_abs_max': float(np.max(np.abs(d['Bz']))),
+            'vz_abs_max': float(np.max(np.abs(d['vz']))),
+            'hall_z_abs_max': float(np.max(np.abs(hall_z))),
+            'psi_az': ox['psi_az'],
         })
 
     initial_error_rows = []
-    for name in ['rho', 'vx', 'vy', 'Bx', 'By']:
+    for name in ['rho', 'vx', 'vy', 'vz', 'Bx', 'By', 'Bz']:
         initial_error_rows.append({
             'variable': name,
             'relative_l2_error': rel_l2(data[0][name], analytic0[name]),
@@ -260,7 +355,7 @@ def main():
     write_csv(
         OUT / 'diagnostics.csv',
         rows,
-        ['snapshot', 'time', 'step', 'flux_signed', 'flux_unsigned', 'jz_abs_max', 'jz_l2', 'divB_l2', 'rho_min', 'rho_max', 'B_abs_max'],
+        ['snapshot', 'time', 'step', 'flux_signed', 'flux_unsigned', 'jz_abs_max', 'jz_l2', 'divB_l2', 'rho_min', 'rho_max', 'B_abs_max', 'Bz_abs_max', 'vz_abs_max', 'hall_z_abs_max', 'psi_az'],
     )
     write_csv(
         OUT / 'initial_condition_errors.csv',
@@ -272,10 +367,15 @@ def main():
     plot_timeseries(rows)
     plot_final_state(data[-1])
     plot_jz_fieldlines(nearest_57)
+    plot_hall_signature(data[-1])
     plot_python_pluto_initial(data[0], analytic0)
+
+    az_final = vector_potential_az(data[-1]['Bx'], data[-1]['By'], data[-1]['x'], data[-1]['y'])
+    points = ox_points_from_az(az_final, data[-1]['x'], data[-1]['y'])
 
     print('Wrote analysis products to', OUT)
     print('Final unsigned reconnected flux:', f'{rows[-1]["flux_unsigned"]:.6f}')
+    print('Az O-X flux estimate:', f'{points["psi_az"]:.6f}')
     print('Nearest snapshot to t=57:', nearest_57['n'], f't={nearest_57["time"]:.3f}')
 
 

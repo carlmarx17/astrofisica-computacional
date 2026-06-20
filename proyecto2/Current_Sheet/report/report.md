@@ -145,7 +145,7 @@ El diagnostico principal se calculo como el flujo reconectado sobre el eje medio
 
 ### 2.3 Visualización con pyPLUTO
 
-Se generaron 13 snapshots cubriendo $t=0$ a $t=60$ con todas las variables fisicas ($\rho$, $P$, $v_x$, $v_y$, $B_x$, $B_y$, $|\mathbf{B}|$). El panel `analysis/figs/pluto_final_all_variables.png` resume el estado final e incluye tambien $J_z=\partial_x B_y-\partial_y B_x$. Como la salida VTK se guardo cada 5 unidades de tiempo, el snapshot mas cercano a $t=57$ es $t=55$; la figura `analysis/figs/jz_fieldlines_t55.png` muestra $J_z$ con lineas de campo magnetico.
+Se generaron 13 snapshots cubriendo $t=0$ a $t=60$ con todas las variables fisicas ($\rho$, $P$, $v_x$, $v_y$, $B_x$, $B_y$, $B_z$, $|\mathbf{B}|$). El panel `analysis/figs/pluto_final_all_variables.png` resume el estado final e incluye tambien $J_z=\partial_x B_y-\partial_y B_x$. Como la salida VTK se guardo cada 5 unidades de tiempo, el snapshot mas cercano a $t=57$ es $t=55$; la figura `analysis/figs/jz_fieldlines_t55.png` muestra $J_z$ con lineas de campo magnetico y anotaciones de los puntos O/X.
 
 ![Diagnosticos temporales: flujo reconectado, corriente maxima y divergencia de B](../analysis/figs/diagnostics_timeseries.png)
 
@@ -157,7 +157,11 @@ Se generaron 13 snapshots cubriendo $t=0$ a $t=60$ con todas las variables fisic
 
 ![Corriente y lineas de campo](../analysis/figs/jz_fieldlines_t55.png)
 
-**Figura 3.** Densidad de corriente $J_z$ con lineas de campo magnetico. El snapshot mas cercano al tiempo de referencia $t=57$ es $t=55$ por la cadencia de salida.
+**Figura 3.** Densidad de corriente $J_z$ con lineas de campo magnetico. El marcador O indica el centro aproximado de la isla magnetica y los marcadores X indican regiones laterales donde cambia la conectividad del campo. El snapshot mas cercano al tiempo de referencia $t=57$ es $t=55$ por la cadencia de salida.
+
+![Firma Hall en t=60](../analysis/figs/hall_signature_t60.png)
+
+**Figura 4.** Diagnosticos especificos del efecto Hall en $t=60$: campo fuera del plano $B_z$, componente fuera del plano del termino Hall $(\mathbf{J}\times\mathbf{B})_z/\rho$ y magnitud del desacoplamiento ion-electron $|\mathbf{v}_e-\mathbf{v}|=|\mathbf{J}|/\rho$, usando $n_e e\simeq\rho$ en las unidades normalizadas de esta corrida.
 
 ### 2.4 Interpretacion de los diagnosticos
 
@@ -175,7 +179,9 @@ Este comportamiento es razonable para una lamina de corriente que se rompe y for
 
 **Error de divergencia.** La tercera grafica muestra $||\nabla\cdot\mathbf{B}||_2$. El error parte de valores muy pequenos, sube hasta el orden de $10^{-3}$ durante la fase no lineal y luego baja hacia valores de orden $4\times10^{-4}-6\times10^{-4}$. En MHD idealmente se exige $\nabla\cdot\mathbf{B}=0$, por lo que esta cantidad debe reportarse. En esta corrida el error no parece catastrofico: crece cuando la dinamica se vuelve no lineal, pero se mantiene relativamente controlado. Como se usa limpieza de divergencia, este comportamiento es esperable; con un esquema estrictamente solenoidal tipo constrained transport se esperarian errores aun mas bajos.
 
-**Mapa de $J_z$ y lineas de campo en $t=55$.** La Figura 3 es la evidencia visual mas importante. Se observa una isla magnetica central alrededor de $x\approx0$, $y\approx0$: las lineas de campo se cierran alrededor de esa region, firma de una estructura tipo O-point o plasmoide. Tambien se ven regiones tipo X-point aproximadamente a los lados de la isla central, cerca de $x\approx-4$ y $x\approx4$, donde las lineas de campo cambian de conectividad. Esto es precisamente lo esperado en reconexion magnetica. Las acumulaciones fuertes de $J_z$ en la isla central y hacia los bordes laterales pueden estar asociadas tanto a la periodicidad del dominio como a la formacion de islas adicionales en los extremos.
+**Mapa de $J_z$ y lineas de campo en $t=55$.** La Figura 3 es la evidencia visual mas importante. Se observa una isla magnetica central alrededor de $x\approx0$, $y\approx0$: las lineas de campo se cierran alrededor de esa region, firma de una estructura tipo O-point o plasmoide. Tambien se ven regiones tipo X-point aproximadamente a los lados de la isla central, cerca de $x\approx-5$ y $x\approx5$, donde las lineas de campo cambian de conectividad. Esto es precisamente lo esperado en reconexion magnetica. Las acumulaciones fuertes de $J_z$ en la isla central y hacia los bordes laterales pueden estar asociadas tanto a la periodicidad del dominio como a la formacion de islas adicionales en los extremos.
+
+**Firma Hall.** La Figura 4 muestra una huella mas directa del efecto Hall. Aunque la condicion inicial tiene $B_z=0$ y $v_z=0$, la evolucion genera campo y velocidad fuera del plano: en $t=60$ se obtiene $\max |B_z|=0.223$ y $\max |v_z|=0.445$. La componente $(\mathbf{J}\times\mathbf{B})_z/\rho$ alcanza valores de orden $0.208$, lo que indica que el termino Hall no solo esta activado numericamente, sino que contribuye de forma localizada cerca de la region de reconexion.
 
 La secuencia fisica global es:
 
@@ -189,17 +195,31 @@ $$
 \int_0^{L_x/2}|B_y(x,0)|\,dx,
 $$
 
-lo cual funciona como indicador global de reconexion, pero no es exactamente el flujo reconectado clasico. Para un analisis mas formal se deberia reconstruir el potencial vectorial $A_z$ y medir
+lo cual funciona como indicador global de reconexion, pero no es exactamente el flujo reconectado clasico. Para obtener una medida mas local se reconstruyo tambien el potencial vectorial $A_z$ a partir de
 
 $$
-\psi_{\rm rec}=A_z(O)-A_z(X),
+B_x=\frac{\partial A_z}{\partial y}, \qquad B_y=-\frac{\partial A_z}{\partial x},
 $$
 
-donde $O$ es el centro de la isla y $X$ el punto de reconexion.
+y se estimo
+
+$$
+\psi_{A_z}=|A_z(O)-A_z(X)|.
+$$
+
+En $t=60$, usando el O-point central y el X-point lateral mas contrastado, se obtiene $\psi_{A_z}\approx0.915$. Esta cantidad no reemplaza por completo un algoritmo automatico robusto de deteccion de puntos criticos, pero es una medida fisicamente mas cercana al flujo reconectado clasico que la integral global de $|B_y|$.
 
 ### 2.5 Evolucion fisica por tiempos
 
 La evolucion visual es coherente con una lamina de corriente de Harris en Hall MHD: inicia en equilibrio, la perturbacion deforma la lamina, aparece una region tipo X-point, crece la reconexion y finalmente se desarrolla una fase no lineal con estructuras magneticas tipo islas/plasmoides.
+
+| Tiempo | Estado fisico | Evidencia principal |
+|--------|---------------|--------------------|
+| $t=0$ | Equilibrio perturbado | Lamina de Harris, $v\approx0$, inversion de $B_x$ y perturbacion inicial en $B_y$. |
+| $t=20$ | Inicio de reconexion | Deformacion de la lamina, aparicion de flujos y crecimiento de la componente reconectada. |
+| $t=30$ | Reconexion activa | Intensificacion de $J_z$, reorganizacion de la capa de corriente y region tipo X. |
+| $t=50$ | Regimen no lineal | Isla magnetica, redistribucion de densidad y estructura compleja en $J_z$. |
+| $t=60$ | Saturacion aproximada | Flujo reconectado casi estabilizado y presencia clara de componentes Hall fuera del plano. |
 
 ![Snapshot t=0](../plots/hall_cs_0000_t0.0.png)
 
@@ -321,7 +341,7 @@ python hall_mhd_harris.py
 
 En la copia versionada, `pluto_sim/` conserva los archivos minimos para documentar la corrida (`pluto.ini`, `definitions.h`, `init.c`, `vtk.out`, `dbl.out`). Los dumps crudos `data.*.vtk`, `data.*.dbl`, `grid.out`, el ejecutable `pluto` y `pluto_run.log` pueden existir localmente para postproceso, pero son artefactos regenerables y se ignoran en git.
 
-**Que se grafico.** Se graficaron las variables fisicas $\rho$, $P$, $v_x$, $v_y$, $B_x$, $B_y$, $|B|$ y $J_z$ en varios tiempos. Ademas se hicieron curvas temporales del flujo reconectado, de $\max |J_z|$ y del error $||\nabla\cdot B||_2$. Para la validacion Python vs PLUTO se compararon mapas de $\rho$, $B_x$ y $B_y$ en $t=0$ y se calcularon errores relativos L2.
+**Que se grafico.** Se graficaron las variables fisicas $\rho$, $P$, $v_x$, $v_y$, $B_x$, $B_y$, $|B|$ y $J_z$ en varios tiempos. Ademas se hicieron curvas temporales del flujo reconectado, de $\max |J_z|$ y del error $||\nabla\cdot B||_2$, una figura especifica de firmas Hall ($B_z$, $(\mathbf{J}\times\mathbf{B})_z/\rho$ y $|\mathbf{v}_e-\mathbf{v}|$), y una figura de corriente con O/X-points anotados. Para la validacion Python vs PLUTO se compararon mapas de $\rho$, $B_x$ y $B_y$ en $t=0$ y se calcularon errores relativos L2.
 
 ### 3.3 Resultados del Análisis
 
@@ -334,6 +354,10 @@ En la copia versionada, `pluto_sim/` conserva los archivos minimos para document
 | $\max(|J_z|)$ maximo temporal | 3.0819 en $t\approx25$ |
 | $\max(|J_z|)$ final | 1.0786 |
 | $\nabla\cdot\mathbf{B}$ L2 final | $4.01\times10^{-4}$ |
+| $\max |B_z|$ final | 0.2228 |
+| $\max |v_z|$ final | 0.4451 |
+| $\max |(\mathbf{J}\times\mathbf{B})_z/\rho|$ final | 0.2084 |
+| Estimacion local $\psi_{A_z}=|A_z(O)-A_z(X)|$ | 0.9154 |
 
 ---
 
@@ -348,10 +372,12 @@ La reproduccion Python de la condicion inicial fue comparada punto a punto contr
 | $\rho$ | $2.47\times10^{-8}$ | $4.67\times10^{-8}$ |
 | $v_x$ | 0 | 0 |
 | $v_y$ | 0 | 0 |
+| $v_z$ | 0 | 0 |
 | $B_x$ | $2.54\times10^{-8}$ | $5.96\times10^{-8}$ |
 | $B_y$ | $2.60\times10^{-8}$ | $2.33\times10^{-10}$ |
+| $B_z$ | 0 | 0 |
 
-Esto confirma que el setup independiente en Python reproduce los campos iniciales usados por PLUTO hasta precision de salida simple. La figura `analysis/figs/python_pluto_initial_comparison.png` muestra los mapas Python, PLUTO y la diferencia para $\rho$, $B_x$ y $B_y$.
+Esto confirma que el setup independiente en Python reproduce los campos iniciales usados por PLUTO hasta precision de salida simple. Esta validacion no prueba una evolucion temporal Python, porque Python no actua aqui como solver evolutivo Hall-MHD. Lo que valida es que la condicion inicial, la malla y los diagnosticos derivados fueron reproducidos correctamente. La figura `analysis/figs/python_pluto_initial_comparison.png` muestra los mapas Python, PLUTO y la diferencia para $\rho$, $B_x$ y $B_y$.
 
 ### 4.2 Flujo reconectado y corriente
 
@@ -369,7 +395,7 @@ $$
 E_z = -v_xB_y + v_yB_x + \eta J_z + E_{z,\mathrm{Hall}}.
 $$
 
-En esta entrega se usa el flujo reconectado integrado sobre el eje medio como diagnostico global porque se calcula directamente desde las salidas VTK. El calculo de $A_z(X)-A_z(O)$ y de $E_z$ local queda como extension natural para comparar cuantitativamente Hall MHD contra una corrida ideal o resistiva.
+En esta entrega se usa el flujo reconectado integrado sobre el eje medio como diagnostico global porque se calcula directamente desde las salidas VTK. Ademas, se reconstruyo $A_z$ como chequeo local y se obtuvo $\psi_{A_z}\approx0.915$ en $t=60$. El calculo de $E_z$ local queda como extension natural para comparar cuantitativamente Hall MHD contra una corrida ideal o resistiva.
 
 ### 4.3 Perfiles 1D y estructura final
 
@@ -381,6 +407,20 @@ Los cortes en $x=0$ muestran la evolucion de las variables a traves de la lamina
 ### 4.4 Divergencia de B
 
 El error $||\nabla\cdot\mathbf{B}||_2$ inicia en $1.89\times10^{-7}$ y termina en $4.01\times10^{-4}$. Tiene un maximo de $2.24\times10^{-3}$ cerca de $t=30$, todavia pequeno frente a las escalas de campo del problema, y luego decrece. Esto indica que el esquema de divergence cleaning mantiene controlado el error solenoidal durante la corrida.
+
+### 4.5 Comparacion Hall vs no Hall pendiente
+
+La comparacion mas directa para aislar el efecto Hall seria repetir exactamente la misma corrida con `HALL_MHD = NO`, manteniendo dominio, malla, condicion inicial, CFL, solver, tiempo final y frecuencia de salida. Con esa segunda corrida se podrian comparar estas cantidades:
+
+| Cantidad | Que mostraria |
+|----------|---------------|
+| Flujo reconectado $\int_0^{L_x/2}|B_y(x,0)|dx$ | Si la reconexion crece antes o mas rapido al activar Hall. |
+| $\max |J_z|$ | Si la capa de corriente se intensifica o se relaja de forma distinta. |
+| Tiempo de onset | El tiempo aproximado en que el flujo reconectado empieza a crecer rapidamente. |
+| $\psi_{A_z}=|A_z(O)-A_z(X)|$ | Una comparacion mas fisica de flujo reconectado local. |
+| $B_z$ y $(\mathbf{J}\times\mathbf{B})_z/\rho$ | Huellas especificas de la dinamica Hall fuera del plano. |
+
+Esta comparacion no se incluye como resultado cuantitativo porque la corrida no Hall no fue ejecutada todavia. Por lo tanto, el presente trabajo demuestra una evolucion compatible con reconexion bajo Hall MHD y muestra firmas Hall dentro de esa corrida, pero no afirma de forma concluyente que Hall acelere la reconexion frente a MHD ideal o resistiva.
 
 ---
 
@@ -435,15 +475,15 @@ El error $||\nabla\cdot\mathbf{B}||_2$ inicia en $1.89\times10^{-7}$ y termina e
 
 ## 6. Conclusiones
 
-1. **PLUTO reproduce exitosamente** la reconexion de Harris con Hall MHD, mostrando el flujo reconectado creciendo hasta 4.55 unidades en $t=60$ bajo la definicion $\int_0^{L_x/2}|B_y(x,0)|dx$.
+1. **La corrida en PLUTO reproduce una evolucion compatible con reconexion magnetica** en una lamina de Harris bajo el modelo Hall MHD, mostrando el flujo reconectado creciendo hasta 4.55 unidades en $t=60$ bajo la definicion $\int_0^{L_x/2}|B_y(x,0)|dx$.
 
-2. **La evolucion observada es consistente con reconexion Hall**: el crecimiento del flujo reconectado y la intensificacion de $J_z$ coinciden cualitativamente con el comportamiento descrito en la literatura. Una afirmacion cuantitativa sobre aceleracion frente a MHD ideal requiere correr la variante `HALL_MHD = NO`.
+2. **La evolucion observada muestra firmas compatibles con la fisica Hall**: se genera $B_z$ desde una condicion inicial con $B_z=0$, aparece un termino Hall fuera del plano localizado y se observa desacoplamiento efectivo entre velocidad ionica y electronica. Una afirmacion cuantitativa sobre aceleracion frente a MHD ideal requiere correr la variante `HALL_MHD = NO`.
 
-3. **La implementacion en Python** reproduce la condicion inicial con errores relativos L2 de orden $10^{-8}$ frente a PLUTO, calcula cantidades derivadas (corriente, flujo reconectado, divergencia) y genera visualizaciones comparativas.
+3. **La implementacion en Python** reproduce la condicion inicial con errores relativos L2 de orden $10^{-8}$ frente a PLUTO, calcula cantidades derivadas (corriente, flujo reconectado, divergencia, $A_z$ y diagnosticos Hall) y genera visualizaciones comparativas.
 
-4. **La principal limitación** es que un solver MHD+Hall completo desde cero requiere esquemas numéricos avanzados (Riemann, CT) que van más allá del alcance de este proyecto.
+4. **La principal limitación** es doble: falta una corrida no Hall para aislar cuantitativamente el efecto Hall, y Python no actua como solver evolutivo completo. Un solver MHD+Hall desde cero requiere esquemas numéricos avanzados (Riemann, CT) que van más allá del alcance de este proyecto.
 
-5. **Mejoras futuras**: Implementar solver upwind 2D, añadir Hall, estudio de convergencia, y animaciones de la evolución.
+5. **Mejoras futuras**: ejecutar la corrida `HALL_MHD = NO`, comparar onset y tasas de reconexion, implementar un calculo local de $E_z$ en el punto X, hacer estudio de convergencia y generar animaciones de la evolucion.
 
 ---
 
