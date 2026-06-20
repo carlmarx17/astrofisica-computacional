@@ -1,6 +1,6 @@
 # Proyecto 2 - Astrofisica Computacional
 
-Este repositorio contiene la simulacion y el analisis de reconexion magnetica en una lamina de corriente de Harris usando Hall MHD con PLUTO. El caso principal esta en `Current_Sheet/`; `Whistler_Waves/` conserva configuraciones auxiliares para ondas whistler.
+Este repositorio contiene la simulacion y el analisis de reconexion magnetica en una lamina de corriente de Harris usando Hall MHD con PLUTO. El caso principal esta en `Current_Sheet/`.
 
 ## Estructura
 
@@ -22,7 +22,6 @@ Este repositorio contiene la simulacion y el analisis de reconexion magnetica en
 │   │   ├── hall_mhd_harris.py         # Solver Hall-MHD 2.5D autocontenido
 │   │   └── output/                    # Snapshots, GIF, figuras y CSV
 │   └── report/report.md               # Reporte tecnico en Markdown
-├── Whistler_Waves/                    # Configuraciones PLUTO para ondas whistler
 ├── PLUTO/                             # Codigo PLUTO local usado como dependencia externa
 └── project_2.pdf                      # Enunciado o material base del proyecto
 ```
@@ -42,11 +41,13 @@ python Current_Sheet/analysis/analysis.py
 cd Current_Sheet/python_reproduction
 python hall_mhd_harris.py
 
-# Simulacion Python mas larga y amortiguada, util para pruebas hasta t=15
-python hall_mhd_harris.py --long-run
-
-# Simulacion Python con parametros personalizados
-python hall_mhd_harris.py --nx 128 --ny 64 --tstop 60 --output-dt 10 --eta 0.02 --nu 0.01
+# Simulacion Python estable documentada en el reporte (128x64, t=25)
+python hall_mhd_harris.py \
+  --nx 128 --ny 64 \
+  --tstop 25 --output-dt 5 \
+  --cfl 0.10 --cfl-hall 0.03 \
+  --eta 1.0e-2 --nu 5.0e-3 \
+  --eta-h 3.0e-4 --nu-h 1.0e-4
 
 # Simulacion Python con la misma malla, tiempo y cadencia de PLUTO
 python hall_mhd_harris.py --pluto-grid
@@ -59,8 +60,8 @@ Para repetir la corrida con PLUTO, define `PLUTO_DIR` apuntando a la instalacion
 - La corrida Hall MHD llega hasta `t=60` en una malla `256 x 128`.
 - El flujo reconectado usado como diagnostico global alcanza `4.5525`.
 - La corriente maxima llega a `max |J_z| = 3.0819` cerca de `t=25`.
-- La simulacion Python ahora evoluciona el mismo setup con un solver Hall-MHD 2.5D autocontenido con hiperdisipacion de 4to orden para estabilidad con baja difusion. Por defecto usa una corrida reducida para iterar rapido; `--pluto-grid` usa `256 x 128`, `tstop=60` y salidas cada `5`.
-- La simulacion Python genera automaticamente un GIF animado de la evolucion en `output/evolution.gif`.
+- La simulacion Python ahora evoluciona el mismo setup con un solver Hall-MHD 2.5D autocontenido con hiperdisipacion de 4to orden para estabilidad con baja difusion. La corrida documentada usa `128 x 64`, `tstop=25` y salidas cada `5`.
+- La simulacion Python genera automaticamente snapshots `.npz`, paneles 2D, diagnosticos CSV, series temporales y un GIF animado de la evolucion en `output/evolution.gif`.
 
 ## Notas sobre el solver Python
 

@@ -10,9 +10,3 @@ Current_Sheet/pluto_sim/pluto_run.log
 
 # Salidas regenerables con tiempos invalidos de pruebas exploratorias.
 Current_Sheet/python_reproduction/output/*_tnan.png
-
-# Salidas regenerables del solver Python Hall-MHD.
-Current_Sheet/python_reproduction/output/python_hall_mhd_*.npz
-Current_Sheet/python_reproduction/output/python_hall_mhd_*.png
-Current_Sheet/python_reproduction/output/python_hall_mhd_*.csv
-Current_Sheet/python_reproduction/output/evolution.gif

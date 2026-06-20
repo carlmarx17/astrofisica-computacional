@@ -15,7 +15,6 @@ El proyecto queda organizado así:
 | `Current_Sheet/pluto_sim/` | Copia de la configuración usada en la corrida y, si están presentes localmente, salidas VTK/DBL regenerables. |
 | `Current_Sheet/analysis/` | Scripts de postproceso para leer PLUTO, calcular diagnósticos y producir figuras finales. |
 | `Current_Sheet/python_reproduction/` | Solver Python independiente, snapshots, diagnósticos y figuras auxiliares. |
-| `Whistler_Waves/` | Configuraciones auxiliares para ondas whistler. |
 | `PLUTO/` | Código PLUTO usado como dependencia externa/local. |
 
 Los resultados centrales son: flujo reconectado final $4.5525$ bajo la métrica $\int_0^{L_x/2}|B_y(x,0)|dx$, máximo temporal $\max |J_z|=3.0819$ cerca de $t\approx25$, y error final $||\nabla\cdot\mathbf{B}||_2=4.01\times10^{-4}$. La comparación Python vs PLUTO en $t=0$ valida que la condición inicial fue reproducida con errores relativos L2 de orden $10^{-8}$.
@@ -34,7 +33,7 @@ Los resultados centrales son: flujo reconectado final $4.5525$ bajo la métrica 
 
 La parte Python ahora tambien evoluciona el problema, pero no debe interpretarse como una copia numerica de PLUTO: usa diferencias finitas centradas, RK2, difusion explicita pequena y evolucion por potencial vectorial $A_z$ para mantener $\nabla\cdot\mathbf{B}$ controlado. PLUTO sigue siendo la referencia de alta resolucion y el solver Python funciona como implementacion independiente, reproducible y modificable para estudiar el mismo setup.
 
-La ultima corrida Python regenerada fue una configuracion intermedia estable, con malla $128\times64$, $t_{\rm stop}=10$ y salidas cada $\Delta t=2$. Esta corrida produjo snapshots `.npz`, mapas 2D con $\nabla\cdot B$, `python_hall_mhd_diagnostics.csv`, `python_hall_mhd_timeseries.png`, `run_metadata.json` y `evolution.gif`. El resultado final fue: flujo reconectado unsigned $0.06308$, $\max |J_z|=1.59347$, $\max |B_z|=0.01290$ y $||\nabla\cdot B||_2=9.18\times10^{-17}$.
+La ultima corrida Python regenerada fue una configuracion intermedia estable, con malla $128\times64$, $t_{\rm stop}=25$ y salidas cada $\Delta t=5$. Esta corrida produjo snapshots `.npz`, mapas 2D con $\nabla\cdot B$, `python_hall_mhd_diagnostics.csv`, `python_hall_mhd_timeseries.png`, `run_metadata.json` y `evolution.gif`. El resultado final fue: flujo reconectado unsigned $0.25941$, $\max |J_z|=1.69378$, $\max |B_z|=0.06224$ y $||\nabla\cdot B||_2=9.25\times10^{-17}$.
 
 ---
 
@@ -66,7 +65,7 @@ $$
 \frac{\partial \mathbf{B}}{\partial t} = \nabla \times \left( \mathbf{v}_e \times \mathbf{B} \right), \quad \mathbf{v}_e = \mathbf{v} - \frac{\mathbf{J}}{n_e e}
 $$
 
-donde $\mathbf{v}_e$ es la velocidad del fluido electrónico. El término Hall congela las líneas de campo en el fluido electrónico en lugar del iónico, permitiendo fenómenos como la **reconexión magnética rápida** y la propagación de **ondas whistler**.
+donde $\mathbf{v}_e$ es la velocidad del fluido electrónico. El término Hall congela las líneas de campo en el fluido electrónico en lugar del iónico, permitiendo fenómenos como la **reconexión magnética rápida** y la propagación de ondas Hall dispersivas a pequeña escala.
 
 ### 1.2 La Lámina de Harris
 
@@ -87,7 +86,7 @@ $$
 
 El término Hall juega un papel crucial en la reconexión magnética:
 - Permite la separación de escalas iónicas y electrónicas
-- Genera ondas whistler que transportan información rápidamente
+- Genera ondas Hall dispersivas que transportan información rápidamente
 - Acelera la reconexión comparado con MHD ideal/resistivo
 - Crea estructuras coherentes en la región de difusión
 
@@ -107,7 +106,7 @@ Las variables están en unidades normalizadas de PLUTO. Se usa una ecuación de 
 
 La lámina de Harris es una configuración estándar para estudiar reconexión porque contiene una inversión de campo magnético sostenida por una capa de corriente. Harris (1962) introdujo este equilibrio como modelo idealizado de una hoja de plasma. En reconexión magnética moderna, el problema se usa para estudiar cómo cambia la topología del campo y cómo se convierte energía magnética en energía cinética y térmica.
 
-El desafío GEM de Birn et al. (2001) convirtió la reconexión en una prueba comparativa entre distintos modelos numéricos: MHD resistiva, Hall MHD, híbridos y cinéticos. Una conclusión central de esa línea de trabajo es que el término Hall permite reconexión más rápida que la MHD resistiva simple, porque desacopla el movimiento electrónico del iónico cerca de la región de difusión. Huba (2003) resume la física Hall y muestra la conexión con ondas whistler, que transportan información magnética a escalas pequeñas. PLUTO incorpora estos ingredientes en un marco conservativo de dinámica de fluidos astrofísicos (Mignone et al. 2012), lo que permite reproducir pruebas 2D como la lámina de Harris con configuraciones controladas.
+El desafío GEM de Birn et al. (2001) convirtió la reconexión en una prueba comparativa entre distintos modelos numéricos: MHD resistiva, Hall MHD, híbridos y cinéticos. Una conclusión central de esa línea de trabajo es que el término Hall permite reconexión más rápida que la MHD resistiva simple, porque desacopla el movimiento electrónico del iónico cerca de la región de difusión. Huba (2003) resume la física Hall y muestra la conexión con modos dispersivos que transportan información magnética a escalas pequeñas. PLUTO incorpora estos ingredientes en un marco conservativo de dinámica de fluidos astrofísicos (Mignone et al. 2012), lo que permite reproducir pruebas 2D como la lámina de Harris con configuraciones controladas.
 
 En aplicaciones astrofísicas, Hall MHD aparece en plasmas parcialmente ionizados, discos protoplanetarios, magnetosferas y evolución magnética de objetos compactos. Trabajos como Lesur et al. (2014) y Viganò et al. (2012) muestran que el término Hall puede modificar la estabilidad, el transporte angular y la evolución del campo magnético. Por eso, aunque este proyecto usa una prueba idealizada, el mecanismo físico estudiado es relevante para problemas más generales de reconexión y transporte magnético.
 
@@ -250,7 +249,7 @@ El dominio $[-12.8,12.8]\times[-6.4,6.4]$ se eligio para que la lamina quede cen
 
 Las fronteras periodicas en $x$ son compatibles con la perturbacion senoidal usada en `init.c`. Las fronteras reflectivas en $y$ mantienen confinada la lamina dentro del dominio vertical. En $z$ se usa una sola celda con fronteras de salida porque el problema es 2D, aunque se conservan las tres componentes de velocidad y campo magnetico.
 
-El `CFL = 0.25` es conservador para una corrida Hall MHD explicita, donde las ondas whistler pueden imponer pasos de tiempo pequenos. `first_dt = 1.e-4` evita un primer paso demasiado grande antes de que PLUTO ajuste automaticamente el paso temporal. `tstop = 60.0` permite cubrir la fase inicial, el inicio de reconexion, el crecimiento no lineal y la saturacion aproximada observada en los diagnosticos. El solver `hll` se selecciono por robustez en discontinuidades y capas de corriente. La salida `vtk = 5.0` fue la usada en el log de ejecucion para generar snapshots en $t=0,5,\ldots,60$; esos archivos son los que se postprocesaron con pyPLUTO.
+El `CFL = 0.25` es conservador para una corrida Hall MHD explicita, donde los modos Hall dispersivos pueden imponer pasos de tiempo pequenos. `first_dt = 1.e-4` evita un primer paso demasiado grande antes de que PLUTO ajuste automaticamente el paso temporal. `tstop = 60.0` permite cubrir la fase inicial, el inicio de reconexion, el crecimiento no lineal y la saturacion aproximada observada en los diagnosticos. El solver `hll` se selecciono por robustez en discontinuidades y capas de corriente. La salida `vtk = 5.0` fue la usada en el log de ejecucion para generar snapshots en $t=0,5,\ldots,60$; esos archivos son los que se postprocesaron con pyPLUTO.
 
 ### 2.3 Resultados
 
@@ -568,6 +567,286 @@ Las salidas principales son:
 | `run_metadata.json` | Comando, parametros, malla, celdas por ancho de lamina y diagnostico final. |
 | `evolution.gif` | Animacion de $\rho$, $J_z$ y $|B|$. |
 
+#### 3.1.7 Lectura guiada del código Python
+
+Una forma compacta de describir el script para una defensa oral es:
+
+$$
+\boxed{\text{El código simula una lámina de corriente de Harris en Hall-MHD usando diferencias finitas en Python.}}
+$$
+
+No es un código de partículas ni un código cinético. Simula un fluido continuo sobre una malla 2D: en cada celda guarda densidad, velocidad, potencial vectorial y campo magnético fuera del plano. PLUTO queda como solución de referencia de alta resolución, mientras que `hall_mhd_harris.py` funciona como una reproducción independiente y autocontenida del mismo problema.
+
+**Problema físico resuelto.** La condición inicial es una lámina de Harris. El campo magnético cambia de signo al cruzar el plano central:
+
+$$
+B_x(y)\simeq B_0\tanh\left(\frac{y}{w}\right).
+$$
+
+Arriba y abajo de $y=0$ el campo apunta en direcciones opuestas. La transición rápida alrededor de $y=0$ produce una corriente intensa $J_z$, y la perturbación inicial del potencial vectorial deforma esa lámina para iniciar la reconexión.
+
+**Estado numérico.** El estado de la simulación se guarda en la clase `State`:
+
+```python
+@dataclass
+class State:
+    rho: np.ndarray
+    vx: np.ndarray
+    vy: np.ndarray
+    vz: np.ndarray
+    az: np.ndarray
+    bz: np.ndarray
+```
+
+Estas variables representan:
+
+| Variable | Interpretación física |
+|----------|-----------------------|
+| `rho` | Densidad del plasma $\rho$. |
+| `vx`, `vy`, `vz` | Componentes de velocidad $v_x$, $v_y$, $v_z$. |
+| `az` | Potencial vectorial fuera del plano $A_z$. |
+| `bz` | Campo magnético fuera del plano $B_z$. |
+
+El punto clave es que el código no guarda directamente $B_x$ y $B_y$. En 2D usa
+
+$$
+\mathbf{B}=\nabla\times(A_z\hat{\mathbf{z}})+B_z\hat{\mathbf{z}},
+$$
+
+de modo que
+
+$$
+B_x=\frac{\partial A_z}{\partial y}, \qquad
+B_y=-\frac{\partial A_z}{\partial x}, \qquad
+B_z=B_z.
+$$
+
+En el script esto aparece como:
+
+```python
+def magnetic_field(s, dx, dy):
+    bx = ddy(s.az, dy)
+    by = -ddx(s.az, dx)
+    return bx, by, s.bz
+```
+
+La ventaja de esta formulación es que el campo magnético in-plane se reconstruye desde un potencial vectorial, lo que mantiene $\nabla\cdot\mathbf{B}$ muy controlado.
+
+**Parámetros principales.** La clase `Params` define tanto la física como la discretización. Los parámetros más importantes son:
+
+| Parámetro | Significado |
+|-----------|-------------|
+| `lx`, `ly` | Tamaño físico del dominio. |
+| `nx`, `ny` | Número de celdas en $x$ e $y$. |
+| `tstop`, `output_dt` | Tiempo final e intervalo entre salidas. |
+| `cs2` | Velocidad del sonido al cuadrado; se usa $p=c_s^2\rho$. |
+| `b0` | Intensidad del campo magnético inicial. |
+| `width` | Ancho $w$ de la lámina de corriente. |
+| `psi0` | Amplitud de la perturbación inicial. |
+| `hall_coeff` | Coeficiente Hall $d_i$ en unidades normalizadas. |
+| `eta`, `nu` | Resistividad y viscosidad. |
+| `eta_h`, `nu_h` | Hiperresistividad e hiperviscosidad. |
+
+Como no se evoluciona una ecuación de energía independiente, el modelo Python es isotérmico:
+
+$$
+p=c_s^2\rho.
+$$
+
+**Malla.** La función `make_grid()` construye una malla uniforme centrada en celdas. El dominio es
+
+$$
+x\in[-L_x/2,L_x/2],\qquad y\in[-L_y/2,L_y/2],
+$$
+
+pero los puntos almacenados corresponden a centros de celda:
+
+$$
+x_i=-\frac{L_x}{2}+\left(i+\frac{1}{2}\right)\Delta x,
+\qquad
+y_j=-\frac{L_y}{2}+\left(j+\frac{1}{2}\right)\Delta y.
+$$
+
+Con los valores por defecto $L_x=25.6$, $L_y=12.8$, $n_x=64$ y $n_y=32$, se obtiene $\Delta x=\Delta y=0.4$. En la corrida final Python se usó $128\times64$, por lo que $\Delta x=\Delta y=0.2$.
+
+**Derivadas.** Las derivadas en $x$ usan diferencias centradas y `np.roll`:
+
+$$
+\frac{\partial a}{\partial x}\approx
+\frac{a_{i+1,j}-a_{i-1,j}}{2\Delta x}.
+$$
+
+El uso de `np.roll` hace que $x$ sea periódico. En $y$ no se usa periodicidad; se agregan celdas fantasma mediante extrapolación lineal. Esto fue necesario porque una frontera plana artificial para $A_z$ reducía incorrectamente $B_x=\partial_y A_z$ en los bordes y generaba corrientes espurias.
+
+**Condición inicial.** La función `initial_state()` construye:
+
+$$
+\rho(y)=0.2+\operatorname{sech}^2(y/w),
+$$
+
+por lo que la densidad es máxima en la lámina central y tiende a $0.2$ lejos de ella. El potencial vectorial base es
+
+$$
+A_z(y)=B_0w\ln\left[\cosh\left(\frac{y}{w}\right)\right],
+$$
+
+que produce
+
+$$
+B_x=\frac{\partial A_z}{\partial y}
+=B_0\tanh\left(\frac{y}{w}\right).
+$$
+
+Luego se agrega la semilla de reconexión:
+
+$$
+A_z\leftarrow A_z+\psi_0\cos(k_y y)\cos(2k_xx).
+$$
+
+Esta perturbación genera una componente $B_y=-\partial_x A_z$, deforma la lámina y rompe la simetría exacta. Las velocidades iniciales y $B_z$ parten en cero:
+
+$$
+v_x=v_y=v_z=0,\qquad B_z=0.
+$$
+
+**Corriente.** La corriente se calcula como
+
+$$
+\mathbf{J}=\nabla\times\mathbf{B},
+$$
+
+es decir,
+
+$$
+J_x=\frac{\partial B_z}{\partial y},\qquad
+J_y=-\frac{\partial B_z}{\partial x},\qquad
+J_z=\frac{\partial B_y}{\partial x}-\frac{\partial B_x}{\partial y}.
+$$
+
+Inicialmente $B_z=0$, así que $J_x$ y $J_y$ empiezan nulos. La corriente dominante es $J_z$, concentrada en la lámina porque $B_x$ cambia rápidamente con $y$.
+
+**Lado derecho de las ecuaciones.** La función `rhs()` calcula las tasas de cambio:
+
+$$
+\frac{\partial \rho}{\partial t},\quad
+\frac{\partial v_x}{\partial t},\quad
+\frac{\partial v_y}{\partial t},\quad
+\frac{\partial v_z}{\partial t},\quad
+\frac{\partial A_z}{\partial t},\quad
+\frac{\partial B_z}{\partial t}.
+$$
+
+La continuidad se escribe como transporte de masa más regularización:
+
+$$
+\frac{\partial\rho}{\partial t}
+=-\nabla\cdot(\rho\mathbf{v})
++0.25\nu\nabla^2\rho-\nu_h\nabla^4\rho.
+$$
+
+Las velocidades cambian por advección, presión isotérmica, fuerza de Lorentz y disipación:
+
+$$
+\frac{\partial\mathbf{v}}{\partial t}
+=-(\mathbf{v}\cdot\nabla)\mathbf{v}
+-c_s^2\frac{\nabla\rho}{\rho}
++\frac{\mathbf{J}\times\mathbf{B}}{\rho}
++\nu\nabla^2\mathbf{v}-\nu_h\nabla^4\mathbf{v}.
+$$
+
+La fuerza de Lorentz se implementa componente a componente como $\mathbf{J}\times\mathbf{B}$.
+
+**Inducción Hall-MHD.** El código construye primero
+
+$$
+\mathbf{v}\times\mathbf{B}
+$$
+
+y
+
+$$
+\mathbf{J}\times\mathbf{B}.
+$$
+
+Luego define un flujo electromotriz efectivo:
+
+$$
+\mathbf{F}=\mathbf{v}\times\mathbf{B}
+-d_i\frac{\mathbf{J}\times\mathbf{B}}{\rho}.
+$$
+
+El primer término es la inducción MHD usual. El segundo es el término Hall: permite que el campo no esté perfectamente congelado al fluido total, sino que responda al movimiento electrónico efectivo. En la simulación esto se manifiesta en el crecimiento de $B_z$ y $v_z$, aunque ambos empiezan en cero.
+
+El script evoluciona el potencial vectorial como
+
+$$
+\frac{\partial A_z}{\partial t}
+=F_z+\eta\nabla^2A_z-\eta_h\nabla^4A_z,
+$$
+
+y el campo fuera del plano como
+
+$$
+\frac{\partial B_z}{\partial t}
+=\frac{\partial F_y}{\partial x}
+-\frac{\partial F_x}{\partial y}
++\eta\nabla^2B_z-\eta_h\nabla^4B_z.
+$$
+
+**Resistividad e hiperdisipación.** La resistividad $\eta$ rompe parcialmente el congelamiento ideal del campo y regulariza la lámina de corriente. La hiperdisipación, proporcional a $-\nabla^4$, amortigua principalmente ruido de escala pequeña. Esto fue importante porque un esquema centrado explícito puede generar oscilaciones de alta frecuencia cerca de gradientes fuertes.
+
+**Condiciones de frontera.** En $x$ el dominio es periódico. En $y$ se usan fronteras reflectivas: $\rho$, $v_x$, $v_z$ y $B_z$ copian la celda interior; $v_y=0$ impide flujo normal a la pared; y $A_z$ se extrapola linealmente para conservar la pendiente física asociada a $B_x$.
+
+**Avance temporal.** El método de tiempo es RK2. En forma esquemática:
+
+$$
+k_1=\mathrm{RHS}(U^n),
+$$
+
+$$
+U^\ast=U^n+\Delta t\,k_1,
+$$
+
+$$
+k_2=\mathrm{RHS}(U^\ast),
+$$
+
+$$
+U^{n+1}=\frac{1}{2}\left(U^n+U^\ast+\Delta t\,k_2\right).
+$$
+
+El paso $\Delta t$ se toma como el mínimo entre restricciones MHD, Hall, difusión e hiperdisipación. La restricción Hall es especialmente costosa porque escala como
+
+$$
+\Delta t_{\rm Hall}\propto \Delta x^2.
+$$
+
+Por eso una corrida Python con la malla completa de PLUTO se vuelve muy cara.
+
+**Medida de reconexión.** El flujo reconectado aproximado se mide integrando $|B_y|$ sobre la línea central:
+
+$$
+\Phi(t)\approx\int_0^{L_x/2}|B_y(x,0)|\,dx.
+$$
+
+$B_y$ es útil porque representa la componente transversal generada cuando las líneas de campo se doblan y cambian de conectividad. No es la única definición posible de flujo reconectado, pero sirve como indicador global de la evolución.
+
+**Interpretación de los paneles.** En las figuras generadas por `plot_state()`:
+
+| Panel | Interpretación |
+|-------|----------------|
+| $\rho$ | Densidad; la franja central viene de $\rho=0.2+\operatorname{sech}^2(y/w)$. |
+| $v_x$ | Flujos horizontales, asociados a salidas de reconexión. |
+| $v_y$ | Flujos verticales, asociados a entrada hacia la lámina; franjas horizontales excesivas indican ruido numérico. |
+| $B_x$ | Campo antiparalelo de Harris, con cambio de signo en $y=0$. |
+| $B_y$ | Campo transversal/reconectado generado por la perturbación y la evolución. |
+| $B_z$ | Campo fuera del plano; es una firma importante de la dinámica Hall. |
+| $J_z$ | Corriente de la lámina, concentrada cerca de $y=0$. |
+| $|B|$ | Magnitud total $\sqrt{B_x^2+B_y^2+B_z^2}$. |
+| $\nabla\cdot B$ | Control numérico de la condición solenoidal. |
+
+En resumen, el código no dibuja la reconexión manualmente. Construye una malla, inicializa una lámina de Harris, calcula $\mathbf{B}$ y $\mathbf{J}$, aplica las fuerzas sobre el fluido, evoluciona $A_z$ y $B_z$, y la reconexión aparece como consecuencia de esa evolución.
+
 ### 3.2 Estructura del proyecto y función de cada código
 
 El proyecto se organizo para separar cuatro responsabilidades: archivos de entrada de PLUTO, salidas de la corrida, scripts Python de analisis y reporte. Esta separación evita mezclar el solver externo con los productos generados y permite repetir el flujo de trabajo desde la raiz del repositorio.
@@ -587,7 +866,6 @@ El proyecto se organizo para separar cuatro responsabilidades: archivos de entra
 | `Current_Sheet/python_reproduction/hall_mhd_harris.py` | Script Python | Solver y analisis Python independiente. | Construye la condicion inicial, evoluciona Hall-MHD 2.5D con diferencias finitas/RK2, reconstruye $\mathbf{B}$ desde $A_z$, calcula diagnosticos y guarda snapshots/figuras. Usa rutas relativas al repositorio. |
 | `Current_Sheet/python_reproduction/output/` | Salidas Python | Productos de la simulacion Python. | Guarda snapshots `.npz`, `python_hall_mhd_diagnostics.csv`, mapas 2D y series temporales. |
 | `Current_Sheet/report/report.md` | Reporte | Documento principal. | Integra teoría, metodología, resultados, comparación, limitaciones, conclusiones y referencias. |
-| `Whistler_Waves/` | Configuraciones PLUTO auxiliares | Otro test Hall MHD. | No es el problema elegido para el reporte; se conserva como referencia porque muestra la propagación de ondas whistler, relacionada con la física Hall. |
 | `PLUTO/` | Dependencia externa local | Código fuente de PLUTO. | Motor numérico usado para compilar y ejecutar la simulación. No se modifica como parte del análisis del proyecto. |
 
 La simulacion principal se ejecuto con PLUTO hasta $t=60$. Las salidas registradas en `vtk.out` contienen 13 snapshots: $t=0,5,10,\ldots,60$. Los archivos `dbl.out`, `vtk.out`, `pluto.ini`, `definitions.h` e `init.c` dentro de `pluto_sim/` documentan la configuracion exacta usada al momento de correr.
@@ -640,7 +918,7 @@ python hall_mhd_harris.py
 # Simulacion Python intermedia larga usada para el analisis regenerado
 python hall_mhd_harris.py \
   --nx 128 --ny 64 \
-  --tstop 10 --output-dt 2 \
+  --tstop 25 --output-dt 5 \
   --cfl 0.10 --cfl-hall 0.03 \
   --eta 1.0e-2 --nu 5.0e-3 \
   --eta-h 3.0e-4 --nu-h 1.0e-4
@@ -685,39 +963,78 @@ Despues de ajustar el solver Python se regenero la corrida autocontenida estable
 ```bash
 python Current_Sheet/python_reproduction/hall_mhd_harris.py \
   --nx 128 --ny 64 \
-  --tstop 10 --output-dt 2 \
+  --tstop 25 --output-dt 5 \
   --cfl 0.10 --cfl-hall 0.03 \
   --eta 1.0e-2 --nu 5.0e-3 \
   --eta-h 3.0e-4 --nu-h 1.0e-4
 ```
 
-La configuracion efectiva fue $128\times64$, $t_{\rm stop}=10$, $\Delta t_{\rm output}=2$, `hall_coeff=1`, `psi0=0.02`, `cfl=0.10`, `cfl_hall=0.03`, $\eta=10^{-2}$, $\nu=5\times10^{-3}$, $\eta_h=3\times10^{-4}$ y $\nu_h=10^{-4}$. El codigo hizo 42035 pasos explicitos y escribio los productos en `Current_Sheet/python_reproduction/output/`.
+La configuracion efectiva fue $128\times64$, $t_{\rm stop}=25$, $\Delta t_{\rm output}=5$, `hall_coeff=1`, `psi0=0.02`, `cfl=0.10`, `cfl_hall=0.03`, $\eta=10^{-2}$, $\nu=5\times10^{-3}$, $\eta_h=3\times10^{-4}$ y $\nu_h=10^{-4}$. El codigo hizo 106810 pasos explicitos y escribio los productos en `Current_Sheet/python_reproduction/output/`.
 
 Esta malla reduce $\Delta x=\Delta y$ de 0.4 a 0.2, por lo que el ancho de la lamina $l=0.5$ pasa de estar resuelto por 1.25 celdas a 2.5 celdas. Todavia no alcanza las 5-8 celdas recomendables para una Harris sheet fina, pero mejora el equilibrio discreto inicial: el residual $-\nabla p+\mathbf{J}\times\mathbf{B}$ bajo de $4.26\times10^{-2}$ en una prueba $64\times32$ a $1.40\times10^{-2}$ en esta corrida.
 
 | t | paso | flujo unsigned | $\max \lvert J_z\rvert$ | $\max \lvert B_z\rvert$ | $\max \lvert v_z\rvert$ | $||\nabla\cdot B||_2$ | residual fuerza L2 | $\rho_{\min}$ | $\rho_{\max}$ |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | 0 | 0 | 0.03995 | 1.76547 | 0.00000 | 0.00000 | $4.47\times10^{-17}$ | $1.40\times10^{-2}$ | 0.20000 | 1.16104 |
-| 2 | 8371 | 0.03829 | 1.81868 | 0.00964 | 0.00777 | $8.40\times10^{-17}$ | $7.11\times10^{-3}$ | 0.19640 | 1.25716 |
-| 4 | 16754 | 0.03963 | 1.72105 | 0.01028 | 0.02298 | $8.74\times10^{-17}$ | $4.01\times10^{-3}$ | 0.19413 | 1.22256 |
-| 6 | 25203 | 0.04538 | 1.55428 | 0.01038 | 0.02781 | $8.68\times10^{-17}$ | $4.44\times10^{-3}$ | 0.19449 | 1.17919 |
-| 8 | 33637 | 0.05199 | 1.62373 | 0.01059 | 0.02378 | $8.84\times10^{-17}$ | $7.01\times10^{-3}$ | 0.19444 | 1.22401 |
-| 10 | 42035 | 0.06308 | 1.59347 | 0.01290 | 0.02287 | $9.18\times10^{-17}$ | $5.20\times10^{-3}$ | 0.19071 | 1.18995 |
+| 5 | 20974 | 0.04275 | 1.70757 | 0.01061 | 0.02765 | $8.46\times10^{-17}$ | $6.59\times10^{-3}$ | 0.19352 | 1.21902 |
+| 10 | 42034 | 0.06308 | 1.59347 | 0.01290 | 0.02287 | $9.06\times10^{-17}$ | $5.20\times10^{-3}$ | 0.19071 | 1.18995 |
+| 15 | 63007 | 0.09964 | 1.64165 | 0.02836 | 0.03451 | $9.32\times10^{-17}$ | $7.93\times10^{-3}$ | 0.18674 | 1.22404 |
+| 20 | 84469 | 0.16201 | 1.60560 | 0.04777 | 0.06736 | $8.88\times10^{-17}$ | $3.78\times10^{-3}$ | 0.17933 | 1.18967 |
+| 25 | 106810 | 0.25941 | 1.69378 | 0.06224 | 0.10495 | $9.25\times10^{-17}$ | $3.15\times10^{-3}$ | 0.17188 | 1.21545 |
 
 Los archivos generados son:
 
 | Archivo | Contenido |
 |---------|-----------|
 | `python_hall_mhd_0000.npz` a `python_hall_mhd_0005.npz` | Snapshots comprimidos con $\rho$, $\mathbf{v}$, $\mathbf{B}$, $A_z$, tiempo, paso y malla. |
-| `python_hall_mhd_0000_t0.00.png` a `python_hall_mhd_0005_t10.00.png` | Paneles 2D de $\rho$, $v_x$, $v_y$, $B_x$, $B_y$, $B_z$, $J_z$, $|B|$ y $\nabla\cdot B$. |
+| `python_hall_mhd_0000_t0.00.png` a `python_hall_mhd_0005_t25.00.png` | Paneles 2D de $\rho$, $v_x$, $v_y$, $B_x$, $B_y$, $B_z$, $J_z$, $|B|$ y $\nabla\cdot B$. |
 | `python_hall_mhd_diagnostics.csv` | Tabla de diagnosticos usada arriba. |
 | `python_hall_mhd_timeseries.png` | Series temporales de flujo reconectado, $\max |J_z|$, divergencia, $\max |B_z|$, residual de fuerza y $\rho_{\min}$. |
 | `run_metadata.json` | Comando ejecutado, parametros, resolucion, celdas por ancho de lamina y diagnostico final. |
 | `evolution.gif` | Animacion con $\rho$, $J_z$ y $|\mathbf{B}|$. |
 
-Visualmente, la mejora mas importante es que desaparece la capa artificial fuerte pegada a las fronteras superior e inferior: el padding/extrapolacion lineal en $y$ respeta la pendiente de $A_z$ y evita partir $B_x$ en la pared. Las franjas horizontales son bastante menores que en $64\times32$, y el mapa agregado de $\nabla\cdot B$ permanece cerca de cero en todo el dominio. En $t=10$ ya se ve una evolucion mas clara que en $t=5$: $B_y$ se ensancha, el patron de velocidades adquiere estructura global y el flujo reconectado sube de $0.03995$ a $0.06308$. Todavia no aparece una isla magnetica como en PLUTO porque la corrida Python sigue siendo temprana y disipativa.
+Las figuras siguientes son los productos visuales principales de la corrida Python larga. La primera resume los diagnosticos temporales; las siguientes muestran el estado inicial, una etapa intermedia y el estado final documentado en $t=25$.
 
-Se intento lanzar la configuracion recomendada $256\times128$, $t_{\rm stop}=5$, `cfl_hall=0.03` y la misma disipacion. La ejecucion fue interrumpida tras aproximadamente 90 s sin completar un snapshot util. Esto no es una inestabilidad fisica; es un coste esperado del esquema Hall explicito, donde $\Delta t_{\rm Hall}\propto \Delta x^2$. La corrida $128\times64$ requirio 42035 pasos para llegar a $t=10$; duplicar la resolucion en cada direccion aumenta el coste por celda y reduce el paso de tiempo.
+![Series temporales de la corrida Python](../python_reproduction/output/python_hall_mhd_timeseries.png)
+
+![Corrida Python t=0](../python_reproduction/output/python_hall_mhd_0000_t0.00.png)
+
+![Corrida Python t=10](../python_reproduction/output/python_hall_mhd_0002_t10.00.png)
+
+![Corrida Python t=25](../python_reproduction/output/python_hall_mhd_0005_t25.00.png)
+
+La animacion completa de la evolucion temprana-intermedia queda guardada como:
+
+![Animacion de la corrida Python](../python_reproduction/output/evolution.gif)
+
+Visualmente, la mejora mas importante es que desaparece la capa artificial fuerte pegada a las fronteras superior e inferior: el padding/extrapolacion lineal en $y$ respeta la pendiente de $A_z$ y evita partir $B_x$ en la pared. Las franjas horizontales son bastante menores que en $64\times32$, y el mapa agregado de $\nabla\cdot B$ permanece cerca de cero en todo el dominio. En $t=25$ la evolucion ya es claramente mas informativa que en $t=5$ o $t=10$: $B_y$ se ensancha y alcanza amplitudes mayores, $B_z$ Hall forma una estructura bipolar cerca de la lamina, el patron de velocidades ocupa buena parte del dominio y el flujo reconectado sube de $0.03995$ a $0.25941$. La solucion sigue siendo mas suave que PLUTO y aun no reproduce plenamente las islas no lineales de la corrida de referencia, pero ya muestra crecimiento temporal sostenido.
+
+#### 3.4.1 ¿Se observa formacion de regiones tipo X?
+
+En la corrida Python a $t=25$ se observan indicios cualitativos de una geometria tipo X, pero no una identificacion tan limpia como en PLUTO. La evidencia principal es:
+
+- El mapa de $B_y$ desarrolla dos lobulos de signo opuesto a izquierda y derecha del centro del dominio. Esta es la senal de campo reconectado creciendo a partir de la perturbacion inicial.
+- El patron de velocidades muestra flujo horizontal convergente/divergente alrededor de la lamina y una respuesta vertical organizada, compatible con una region central donde cambia la conectividad magnetica.
+- $B_z$ ya no es cero: aparece una estructura Hall bipolar concentrada cerca de $y=0$, una firma esperada cuando el termino Hall empieza a actuar.
+- $|B|$ muestra deformacion suave alrededor del centro, pero todavia no una isla cerrada bien definida.
+
+Por lo tanto, lo correcto es decir que Python muestra una etapa temprana/intermedia de reconexion con una region tipo X suavizada cerca del centro, no una isla magnetica plenamente formada. En PLUTO la estructura X/O es mas clara porque la malla es mas fina, el esquema es conservativo y la evolucion llega hasta $t=60$. En Python, la mayor disipacion y la resolucion de solo 2.5 celdas por ancho de lamina suavizan los gradientes y retrasan o borran estructuras pequenas.
+
+#### 3.4.2 Desafios, problemas y corridas fallidas en Python
+
+La implementacion Python no fue directa. Los principales problemas encontrados fueron:
+
+| Problema | Sintoma observado | Causa probable | Solucion aplicada o estado |
+|----------|-------------------|----------------|----------------------------|
+| Malla inicial demasiado gruesa | Franjas horizontales en $v_y$, $B_x$, $J_z$ y $|B|$ | Con $64\times32$, $\Delta y=0.4$ y $l=0.5$, la lamina solo tenia 1.25 celdas por ancho | Se subio a $128\times64$, con 2.5 celdas por ancho; mejora visual y baja el residual inicial |
+| Frontera de $A_z$ incorrecta | Capa artificial cerca de las fronteras superior/inferior | Forzar `Az` al promedio hacia plana la frontera y altera $B_x=\partial_yA_z$ | Se reemplazo por extrapolacion lineal en `apply_boundaries()` |
+| CFL Hall rigido | Muchisimos pasos para tiempos moderados | El paso Hall escala como $\Delta t\propto\Delta x^2$ | Se bajo `cfl_hall` a 0.03 y se acepto el costo de 106810 pasos para $t=25$ |
+| Corrida larga con baja difusion | `RuntimeWarning: overflow encountered in add` y paso de tiempo inutilmente pequeno | Gradientes fuertes + diferencias centradas + Hall explicito sin upwind | Esa corrida no se usa como resultado; se aumento disipacion para la corrida estable |
+| Corrida $256\times128$ | No completo un snapshot util en ~90 s | Costo computacional alto en Python puro | Se dejo como corrida recomendada fuera de esta sesion; se uso $128\times64$ para resultados documentados |
+| Escalas de color automaticas | Las franjas parecian crecer o desaparecer segun el percentil | Cada snapshot reescalaba colores de forma distinta | Se fijaron limites para $v_x$, $v_y$, $B_x$, $B_y$, $B_z$, $J_z$ y $\nabla\cdot B$ |
+| Falta de diagnostico local | Era dificil saber si el problema era fisico o numerico | Solo se miraban campos visuales | Se agregaron `divB_l2`, mapa de $\nabla\cdot B$, residual de fuerza, `run_metadata.json` y series temporales |
+
+El aprendizaje principal es que el solver Python necesita mas cuidado numerico que PLUTO. Las diferencias centradas y RK2 son suficientes para una demostracion autocontenida y estable con disipacion, pero no para reproducir cuantitativamente una reconexion Hall no lineal. Para avanzar, las mejoras mas importantes serian implementar un flujo upwind/Rusanov para continuidad y momento, subciclar o tratar semi-implicitamente el termino Hall, y correr una malla de al menos $256\times128$ durante mas tiempo.
 
 Tambien se probo una corrida a $t=15$ con menor difusion:
 
@@ -725,7 +1042,7 @@ Tambien se probo una corrida a $t=15$ con menor difusion:
 python Current_Sheet/python_reproduction/hall_mhd_harris.py --tstop 15 --output-dt 3
 ```
 
-Esa corrida produjo un `RuntimeWarning: overflow encountered in add` durante el calculo de la velocidad maxima y fue interrumpida porque el paso de tiempo se volvio inutilmente pequeno. Por eso no se usa como resultado fisico. La conclusion practica es que el arreglo de frontera mejora la apariencia y elimina un artefacto claro, pero el esquema centrado Python sigue necesitando mas difusion, subciclado Hall o un esquema conservativo para correr tiempos comparables a PLUTO sin suavizar tanto la solucion.
+Como se resume en la tabla anterior, esa corrida produjo un `RuntimeWarning: overflow encountered in add` y no se usa como resultado fisico. La conclusion practica es que el arreglo de frontera mejora la apariencia y elimina un artefacto claro, pero el esquema centrado Python sigue necesitando mas difusion, subciclado Hall o un esquema conservativo para correr tiempos comparables a PLUTO sin suavizar tanto la solucion.
 
 ---
 
@@ -812,7 +1129,7 @@ Esta comparacion no se incluye como resultado cuantitativo porque la corrida no 
 | Aspecto | Limitación | Mejora Posible |
 |---------|------------|----------------|
 | **Solver MHD** | El solver Python es no conservativo y usa diferencias centradas | Implementar HLL/Rusanov 2D o MUSCL-Hancock conservativo |
-| **Término Hall** | Implementado de forma explicita; impone pasos de tiempo pequenos | Subciclar Hall, usar esquemas semi-implicitos o whistler-stable |
+| **Término Hall** | Implementado de forma explicita; impone pasos de tiempo pequenos | Subciclar Hall o usar esquemas semi-implicitos estables para modos Hall dispersivos |
 | **Difusión** | Se usan $\eta$ y $\nu$ pequenas como regularizacion numerica | Hacer estudio de sensibilidad y separar difusion fisica de numerica |
 | **Hiperdisipación** | Agregada como solución a la inestabilidad con $\eta,\nu$ bajos | Ver sección 5.2.1 |
 | **Divergencia de B** | $B_x,B_y$ se reconstruyen desde $A_z$; no es el mismo CT de PLUTO | Implementar constrained transport tipo Yee para todas las componentes |
@@ -849,7 +1166,7 @@ $$
 \partial_t a \supset -\nu_h(\partial_x^4 a+\partial_y^4 a).
 $$
 
-La corrida estable actual usa $128\times64$, $\eta=10^{-2}$, $\nu=5\times10^{-3}$, $\eta_h=3\times10^{-4}$, $\nu_h=10^{-4}$, `cfl=0.10` y `cfl_hall=0.03`. Con esos parametros llega de forma estable a $t=10$, mantiene $||\nabla\cdot B||_2\simeq10^{-16}$ y genera un componente Hall fuera del plano con $\max |B_z|=0.01290$.
+La corrida estable actual usa $128\times64$, $\eta=10^{-2}$, $\nu=5\times10^{-3}$, $\eta_h=3\times10^{-4}$, $\nu_h=10^{-4}$, `cfl=0.10` y `cfl_hall=0.03`. Con esos parametros llega de forma estable a $t=25$, mantiene $||\nabla\cdot B||_2\simeq10^{-16}$ y genera un componente Hall fuera del plano con $\max |B_z|=0.06224$.
 
 **Limitaciones remanentes:**
 - El esquema de diferencias centradas sigue siendo menos preciso que el Godunov HLL de PLUTO
@@ -870,7 +1187,7 @@ Al finalizar cada simulación estable, `make_gif()` lee los snapshots `.npz` y g
 | **Flujo reconectado** | Integral aproximada | Definición más precisa usando el punto X |
 | **Errores L1/L2** | Calculados para la condicion inicial; falta comparacion evolutiva contra otro solver | Comparar Hall vs ideal y hacer estudio de convergencia |
 | **Convergencia** | Una sola resolución | Ejecutar mallas 64², 128², 256², 512² |
-| **Espectro** | Sin análisis de Fourier | Transformada para ondas whistler |
+| **Espectro** | Sin análisis de Fourier | Transformada para modos Hall dispersivos |
 | **Visualización** | 2D estático | Animaciones, plots interactivos |
 
 ### 5.4 Reporte y Documentación
