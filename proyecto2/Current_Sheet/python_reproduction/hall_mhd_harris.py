@@ -2,27 +2,37 @@
 hall_mhd_harris.py
 Reproduccion Python - Harris Current Sheet.
 
-Este script implementa el pipeline completo del problema:
+Este script implementa el pipeline Python auxiliar del problema:
   1. Setup de la condicion inicial (Harris sheet)
   2. Calculo de cantidades derivadas (J, flujo reconectado, etc.)
   3. Visualizacion (comparacion con PLUTO)
   4. Analisis de errores
 
 Las ecuaciones MHD y Hall se resuelven con PLUTO. Este script
-procesa los datos de PLUTO para analisis y visualizacion en Python.
+reproduce el setup y procesa los datos de PLUTO para analisis y visualizacion.
 """
+from pathlib import Path
+import os
+import sys
+import warnings
+
+MPLCONFIG = Path('/tmp') / 'matplotlib-cache'
+MPLCONFIG.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault('MPLCONFIGDIR', str(MPLCONFIG))
+
 import numpy as np
 from numpy import pi
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.colors import SymLogNorm
-from scipy import integrate
-import os, sys, warnings
 warnings.filterwarnings('ignore')
 
-os.makedirs('output', exist_ok=True)
-os.makedirs('comparison', exist_ok=True)
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT_DIR = Path(__file__).resolve().parent
+OUT_DIR = SCRIPT_DIR / 'output'
+PLUTO_RUN = ROOT / 'pluto_sim'
+OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ============================================================
 # 1. SETUP: Condicion inicial de Harris sheet
@@ -59,10 +69,11 @@ def compute_current(Bx, By, dx, dy):
     return Jz
 
 def reconnected_flux(By, xc, yc):
-    """Flujo reconectado: int |By| dx en x < Lx/4."""
-    mask = xc <= xc.min() + Lx/4
-    flux_y = integrate.trapezoid(np.abs(By[mask,:]), yc, axis=1)
-    return integrate.trapezoid(flux_y, xc[mask])
+    """Flujo reconectado usado en el reporte: int_0^(Lx/2) |By(x,0)| dx."""
+    j0 = int(np.argmin(np.abs(yc)))
+    xmax = 0.5 * (xc.max() - xc.min())
+    mask = (xc >= 0.0) & (xc <= xmax)
+    return np.trapezoid(np.abs(By[mask, j0]), xc[mask])
 
 def compute_divB(Bx, By, dx, dy):
     """Divergencia de B."""
@@ -74,15 +85,17 @@ def compute_divB(Bx, By, dx, dy):
 # ============================================================
 # 3. CARGAR DATOS DE PLUTO
 # ============================================================
-pluto_py = os.path.expandvars('$PLUTO_DIR/Tools/pyPLUTO')
-sys.path.insert(0, pluto_py)
-import pyPLUTO as pypl
+pluto_py_candidates = []
+if os.environ.get('PLUTO_DIR'):
+    pluto_py_candidates.append(Path(os.environ['PLUTO_DIR']) / 'Tools' / 'pyPLUTO')
+pluto_py_candidates.append(ROOT.parent / 'PLUTO' / 'Tools' / 'pyPLUTO')
+for candidate in pluto_py_candidates:
+    if candidate.exists() and str(candidate) not in sys.path:
+        sys.path.insert(0, str(candidate))
+        break
 import pyPLUTO.pload as pp
 
-PLT_SIM = '/home/carlmartx/Documents/astrofisica-computacional/proyecto2/Current_Sheet/pluto_sim/'
-nlast = pypl.nlast_info(w_dir=PLT_SIM, datatype='vtk')
-
-with open(f'{PLT_SIM}/vtk.out') as f:
+with open(PLUTO_RUN / 'vtk.out') as f:
     lines = f.readlines()
 
 snapshots = []
@@ -94,7 +107,7 @@ print(f"PLUTO: {len(snapshots)} snapshots cargados")
 
 pluto = []
 for s in snapshots:
-    D = pp.pload(s['n'], w_dir=PLT_SIM, datatype='vtk')
+    D = pp.pload(s['n'], w_dir=str(PLUTO_RUN) + '/', datatype='vtk')
     pluto.append({
         't': s['time'], 'n': s['n'],
         'rho': D.rho, 'vx': D.vx1, 'vy': D.vx2,
@@ -121,7 +134,7 @@ ax2.set_xlabel('Time'); ax2.set_ylabel('Max |Jz|')
 ax2.set_title('Corriente Maxima vs Tiempo')
 ax2.grid(True)
 plt.tight_layout()
-plt.savefig('output/analysis_timeseries.png', dpi=120)
+plt.savefig(OUT_DIR / 'analysis_timeseries.png', dpi=120)
 plt.close()
 print("Analisis temporal guardado.")
 
@@ -165,7 +178,7 @@ for col, (data, title) in enumerate([(Bmag0, 't=0'), (Bmagf, f't={Df["t"]:.1f}')
 
 axes[3, 2].axis('off')
 plt.tight_layout()
-plt.savefig('output/comparison_initial_final.png', dpi=120)
+plt.savefig(OUT_DIR / 'comparison_initial_final.png', dpi=120)
 plt.close()
 print("Comparacion inicial/final guardada.")
 
@@ -181,7 +194,7 @@ ax.set_xlabel('Time'); ax.set_ylabel('L2 norm of div(B)')
 ax.set_title('Evolucion de div(B) (error de divergence cleaning)')
 ax.grid(True)
 plt.tight_layout()
-plt.savefig('output/divB_evolution.png', dpi=120)
+plt.savefig(OUT_DIR / 'divB_evolution.png', dpi=120)
 plt.close()
 print("div(B) evolution guardada.")
 
@@ -207,7 +220,7 @@ for i, (var, label, data_list) in enumerate([
     ax.legend(fontsize=7); ax.grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig('output/profiles_x0.png', dpi=120)
+plt.savefig(OUT_DIR / 'profiles_x0.png', dpi=120)
 plt.close()
 print("Perfiles 1D guardados.")
 
@@ -225,4 +238,4 @@ print(f"Tiempo final: t = {Df['t']:.1f}")
 print(f"Pasos PLUTO: {len(snapshots)} snapshots")
 print(f"Flujo reconectado final: {flux_rec[-1]:.4f}")
 print(f"|B| max final: {np.max(Bmagf):.4f}")
-print(f"Archivos de salida en output/")
+print(f"Archivos de salida en {OUT_DIR}")

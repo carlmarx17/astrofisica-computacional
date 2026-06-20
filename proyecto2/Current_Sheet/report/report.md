@@ -20,6 +20,20 @@ El proyecto queda organizado así:
 
 Los resultados centrales son: flujo reconectado final $4.5525$ bajo la métrica $\int_0^{L_x/2}|B_y(x,0)|dx$, máximo temporal $\max |J_z|=3.0819$ cerca de $t\approx25$, y error final $||\nabla\cdot\mathbf{B}||_2=4.01\times10^{-4}$. La comparación Python vs PLUTO en $t=0$ valida que la condición inicial fue reproducida con errores relativos L2 de orden $10^{-8}$.
 
+### Correspondencia con el enunciado
+
+| Requisito del proyecto | Dónde se responde | Estado |
+|------------------------|-------------------|--------|
+| Elegir un problema MHD al menos 2D desde `PLUTO/Test_Problems/MHD` | Se usa `MHD/Hall_MHD/Current_Sheet`, una lámina de Harris 2D. | Cumplido |
+| Marco teórico, ecuaciones, condiciones de frontera y contexto físico | Secciones 1.1-1.5. | Cumplido |
+| Reproducir una simulación PLUTO completa | Secciones 2.1-2.6 y archivos `Current_Sheet/init.c`, `definitions_01.h`, `pluto_01.ini`. | Cumplido |
+| Graficar variables físicas con pyPLUTO | Secciones 2.3, 2.5 y script `analysis/plot_results.py`. | Cumplido |
+| Implementación Python independiente | `python_reproduction/hall_mhd_harris.py` reproduce la condición inicial y el postproceso; no implementa un solver Hall-MHD completo. | Parcial |
+| Comparación PLUTO vs Python y errores | Secciones 4.1-4.4 y `analysis/analysis.py`. | Cumplido para la condición inicial y diagnósticos |
+| Discusión de limitaciones, fuentes de error y mejoras | Sección 5. | Cumplido |
+
+La principal diferencia frente al enunciado ideal es que la parte Python no reemplaza a PLUTO como solver evolutivo Hall-MHD. En este trabajo Python se usa como reproducción independiente del setup y como herramienta de análisis cuantitativo. Un solver Hall-MHD completo requiere un esquema conservativo 2D con Riemann solver, control estricto de $\nabla\cdot\mathbf{B}$ y tratamiento estable del término Hall; por eso se declara explícitamente como mejora futura.
+
 ---
 
 ## 1. Marco Teórico
@@ -74,6 +88,26 @@ El término Hall juega un papel crucial en la reconexión magnética:
 - Genera ondas whistler que transportan información rápidamente
 - Acelera la reconexión comparado con MHD ideal/resistivo
 - Crea estructuras coherentes en la región de difusión
+
+### 1.4 Condiciones de frontera y normalización
+
+La corrida se hace en geometría cartesiana 2D con coordenadas $(x,y)$ y una tercera dirección inactiva. El dominio físico es
+
+$$
+x\in[-12.8,12.8], \qquad y\in[-6.4,6.4],
+$$
+
+discretizado con una malla uniforme $256\times128$. Las fronteras usadas en `pluto_01.ini` son periódicas en $x$ y reflectivas en $y$. La periodicidad en $x$ permite que la perturbación inicial sea compatible con el dominio horizontal; las fronteras reflectivas en $y$ mantienen confinada la lámina dentro del dominio vertical. La dirección $z$ se deja con una sola celda y condiciones de salida porque el problema es estrictamente 2D.
+
+Las variables están en unidades normalizadas de PLUTO. Se usa una ecuación de estado isotérmica con $c_s^2=0.5$, densidad de fondo $\rho_{\rm bg}=0.2$, campo característico $B_0=1$, ancho de lámina $l=0.5$ y amplitud de perturbación $\Psi_0=0.02$.
+
+### 1.5 Estado del arte resumido
+
+La lámina de Harris es una configuración estándar para estudiar reconexión porque contiene una inversión de campo magnético sostenida por una capa de corriente. Harris (1962) introdujo este equilibrio como modelo idealizado de una hoja de plasma. En reconexión magnética moderna, el problema se usa para estudiar cómo cambia la topología del campo y cómo se convierte energía magnética en energía cinética y térmica.
+
+El desafío GEM de Birn et al. (2001) convirtió la reconexión en una prueba comparativa entre distintos modelos numéricos: MHD resistiva, Hall MHD, híbridos y cinéticos. Una conclusión central de esa línea de trabajo es que el término Hall permite reconexión más rápida que la MHD resistiva simple, porque desacopla el movimiento electrónico del iónico cerca de la región de difusión. Huba (2003) resume la física Hall y muestra la conexión con ondas whistler, que transportan información magnética a escalas pequeñas. PLUTO incorpora estos ingredientes en un marco conservativo de dinámica de fluidos astrofísicos (Mignone et al. 2012), lo que permite reproducir pruebas 2D como la lámina de Harris con configuraciones controladas.
+
+En aplicaciones astrofísicas, Hall MHD aparece en plasmas parcialmente ionizados, discos protoplanetarios, magnetosferas y evolución magnética de objetos compactos. Trabajos como Lesur et al. (2014) y Viganò et al. (2012) muestran que el término Hall puede modificar la estabilidad, el transporte angular y la evolución del campo magnético. Por eso, aunque este proyecto usa una prueba idealizada, el mecanismo físico estudiado es relevante para problemas más generales de reconexión y transporte magnético.
 
 ---
 
@@ -215,29 +249,37 @@ El script `hall_mhd_harris.py` implementa el pipeline Python usado para reproduc
 
 El solver evolutivo completo Hall-MHD se deja a PLUTO; la parte Python reproduce la condicion inicial y el post-procesamiento con diferencias finitas, lo cual permite validar setup y diagnosticos sin reimplementar todo el modulo Hall de PLUTO.
 
-### 3.2 Codigo desarrollado, ejecucion y productos
+### 3.2 Estructura del proyecto y función de cada código
 
-El proyecto se organizo en tres partes: configuracion de PLUTO, reproduccion/post-proceso en Python y generacion de figuras para el reporte.
+El proyecto se organizo para separar cuatro responsabilidades: archivos de entrada de PLUTO, salidas de la corrida, scripts Python de analisis y reporte. Esta separación evita mezclar el solver externo con los productos generados y permite repetir el flujo de trabajo desde la raiz del repositorio.
 
-**Archivos de configuracion PLUTO.**
-
-| Archivo | Funcion |
-|---------|---------|
-| `init.c` | Define la condicion inicial de la lamina de Harris: densidad $0.2+\mathrm{sech}^2(y/l)$, campo $B_x=B_0\tanh(y/l)$ y perturbacion magnetica inicial proporcional a $\Psi_0$. |
-| `definitions_01.h` | Configura la corrida Hall MHD usada como caso principal: MHD, 2D, geometria cartesiana, EOS isotermica, `HALL_MHD = EXPLICIT`, `DIV_CLEANING`, reconstruccion lineal y RK2. |
-| `definitions_02.h` | Variante de configuracion incluida como referencia para comparaciones posteriores. |
-| `pluto_01.ini` | Parametros de la corrida principal: dominio $[-12.8,12.8]\times[-6.4,6.4]$, malla $256\times128$, `tstop=60`, `CFL=0.25`, salida VTK cada $\Delta t=5$, `WIDTH=0.5` y `PSI0=0.02`. |
-| `pluto_02.ini` | Archivo alternativo de parametros, conservado para reproducibilidad y comparaciones futuras. |
+| Ruta o archivo | Tipo | Que es | Que hace dentro del proyecto |
+|----------------|------|--------|------------------------------|
+| `Current_Sheet/init.c` | Código C para PLUTO | Definición física del problema. | Implementa la condición inicial de Harris: $\rho=0.2+\mathrm{sech}^2(y/l)$, $B_x=B_0\tanh(y/l)$, $v_x=v_y=v_z=0$ y una perturbación magnética proporcional a $\Psi_0$. También deja vacías `Analysis()` y `UserDefBoundary()` porque el análisis se hace después en Python. |
+| `Current_Sheet/definitions_01.h` | Configuración de compilación PLUTO | Caso principal. | Activa MHD 2D cartesiano, EOS isotérmica, reconstrucción lineal, RK2, `DIV_CLEANING` y `HALL_MHD = EXPLICIT`. Es el archivo que define la física que se compila. |
+| `Current_Sheet/definitions_02.h` | Configuración alternativa PLUTO | Variante de comparación. | Se conserva como referencia para una corrida sin Hall o para comparar contra otra configuración. No es el caso principal usado en los resultados finales. |
+| `Current_Sheet/pluto_01.ini` | Entrada de ejecución PLUTO | Parámetros numéricos de la corrida principal. | Define dominio, malla, CFL, tiempo final, solver HLL, fronteras, frecuencia de salida y parámetros `ETA`, `WIDTH`, `PSI0`. |
+| `Current_Sheet/pluto_02.ini` | Entrada alternativa PLUTO | Parámetros para otra corrida. | Permite repetir pruebas o preparar una comparación futura con otra configuración. |
+| `Current_Sheet/pluto_sim/` | Carpeta de corrida | Copia de metadatos y salidas PLUTO. | Guarda `pluto.ini`, `definitions.h`, `init.c`, `vtk.out`, `dbl.out` y, localmente, los dumps `data.*.vtk/.dbl`. Es la fuente que leen los scripts de postproceso. |
+| `Current_Sheet/analysis/plot_results.py` | Script Python | Visualización por snapshot. | Lee `pluto_sim/vtk.out`, carga cada snapshot con `pyPLUTO`, calcula presión, $|\mathbf{B}|$ y $J_z$, y genera los paneles `plots/hall_cs_*.png`. |
+| `Current_Sheet/analysis/analysis.py` | Script Python | Diagnóstico cuantitativo y comparación. | Lee todos los snapshots, reconstruye la condición inicial analítica, calcula flujo reconectado, $\max |J_z|$, $||\nabla\cdot\mathbf{B}||_2$, errores Python vs PLUTO en $t=0$, CSV y figuras finales del reporte. |
+| `Current_Sheet/analysis/figs/` | Salidas de análisis | Figuras y tablas finales. | Contiene `diagnostics.csv`, `initial_condition_errors.csv`, `diagnostics_timeseries.png`, `pluto_final_all_variables.png`, `jz_fieldlines_t55.png` y `python_pluto_initial_comparison.png`. |
+| `Current_Sheet/plots/` | Salidas gráficas | Paneles temporales completos. | Contiene una imagen por snapshot desde $t=0$ hasta $t=60$ con todas las variables físicas graficadas. |
+| `Current_Sheet/python_reproduction/hall_mhd_harris.py` | Script Python | Reproducción independiente del setup y análisis auxiliar. | Construye la misma malla y condición inicial que PLUTO, define diferencias finitas para $J_z$ y $\nabla\cdot\mathbf{B}$, calcula flujo reconectado y produce gráficas auxiliares. Usa rutas relativas al repositorio. |
+| `Current_Sheet/python_reproduction/output/` | Salidas Python | Figuras auxiliares. | Guarda series temporales, comparación inicial/final, evolución de divergencia y perfiles 1D. |
+| `Current_Sheet/report/report.md` | Reporte | Documento principal. | Integra teoría, metodología, resultados, comparación, limitaciones, conclusiones y referencias. |
+| `Whistler_Waves/` | Configuraciones PLUTO auxiliares | Otro test Hall MHD. | No es el problema elegido para el reporte; se conserva como referencia porque muestra la propagación de ondas whistler, relacionada con la física Hall. |
+| `PLUTO/` | Dependencia externa local | Código fuente de PLUTO. | Motor numérico usado para compilar y ejecutar la simulación. No se modifica como parte del análisis del proyecto. |
 
 La simulacion principal se ejecuto con PLUTO hasta $t=60$. Las salidas registradas en `vtk.out` contienen 13 snapshots: $t=0,5,10,\ldots,60$. Los archivos `dbl.out`, `vtk.out`, `pluto.ini`, `definitions.h` e `init.c` dentro de `pluto_sim/` documentan la configuracion exacta usada al momento de correr.
 
-**Scripts Python.**
+**Lectura rápida de los scripts Python.**
 
-| Script | Que hace | Salidas principales |
-|--------|----------|--------------------|
-| `analysis/plot_results.py` | Lee los snapshots VTK con `pyPLUTO`, calcula $P=c_s^2\rho$, $|B|$ y $J_z=\partial_xB_y-\partial_yB_x$, y genera paneles por tiempo. | `plots/hall_cs_*.png` |
-| `analysis/analysis.py` | Carga todos los snapshots, reconstruye la condicion inicial analitica, calcula flujo reconectado, corriente maxima, error $||\nabla\cdot B||_2$, errores Python vs PLUTO y figuras comparativas. | `analysis/figs/diagnostics.csv`, `initial_condition_errors.csv`, `diagnostics_timeseries.png`, `jz_fieldlines_t55.png`, `pluto_final_all_variables.png`, `python_pluto_initial_comparison.png` |
-| `python_reproduction/hall_mhd_harris.py` | Construye en Python la misma condicion inicial de Harris, define funciones para $J_z$, flujo reconectado y divergencia, y genera figuras de analisis inicial/final. | `python_reproduction/output/*.png` |
+| Script | Entrada | Operaciones principales | Salida |
+|--------|---------|-------------------------|--------|
+| `analysis/plot_results.py` | Snapshots VTK en `pluto_sim/` | Carga datos con `pyPLUTO`, calcula variables derivadas y grafica cada tiempo. | `plots/hall_cs_*.png` |
+| `analysis/analysis.py` | Snapshots VTK y condición inicial analítica | Calcula diagnósticos, errores relativos L2 y figuras comparativas. | `analysis/figs/*.png`, `analysis/figs/*.csv` |
+| `python_reproduction/hall_mhd_harris.py` | Parámetros del problema y snapshots PLUTO | Reconstruye setup en Python, calcula $J_z$, flujo reconectado, divergencia y perfiles. | `python_reproduction/output/*.png` |
 
 **Que se corrio.** Primero se configuro y ejecuto PLUTO para la corrida Hall MHD principal. Luego se corrio `analysis/plot_results.py` para producir las figuras por snapshot. Despues se ejecuto `analysis/analysis.py` para calcular los diagnosticos cuantitativos usados en el reporte. Finalmente, `hall_mhd_harris.py` se uso como reproduccion Python del setup y como apoyo para comparar la condicion inicial y las cantidades derivadas.
 
