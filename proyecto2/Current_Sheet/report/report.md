@@ -26,8 +26,8 @@ Los resultados centrales son: flujo reconectado final $4.5525$ bajo la métrica 
 |------------------------|-------------------|--------|
 | Elegir un problema MHD al menos 2D desde `PLUTO/Test_Problems/MHD` | Se usa `MHD/Hall_MHD/Current_Sheet`, una lámina de Harris 2D. | Cumplido |
 | Marco teórico, ecuaciones, condiciones de frontera y contexto físico | Secciones 1.1-1.5. | Cumplido |
-| Reproducir una simulación PLUTO completa | Secciones 2.1-2.6 y archivos `Current_Sheet/init.c`, `definitions_01.h`, `pluto_01.ini`. | Cumplido |
-| Graficar variables físicas con pyPLUTO | Secciones 2.3, 2.5 y script `analysis/plot_results.py`. | Cumplido |
+| Reproducir una simulación PLUTO completa | Secciones 2.1-2.7 y archivos `Current_Sheet/init.c`, `definitions_01.h`, `pluto_01.ini`. | Cumplido |
+| Graficar variables físicas con pyPLUTO | Secciones 2.4, 2.6 y script `analysis/plot_results.py`. | Cumplido |
 | Implementación Python independiente | `python_reproduction/hall_mhd_harris.py` reproduce la condición inicial y el postproceso; no implementa un solver Hall-MHD completo. | Parcial |
 | Comparación PLUTO vs Python y errores | Secciones 4.1-4.4 y `analysis/analysis.py`. | Cumplido para la condición inicial y diagnósticos |
 | Discusión de limitaciones, fuentes de error y mejoras | Sección 5. | Cumplido |
@@ -132,7 +132,125 @@ En aplicaciones astrofísicas, Hall MHD aparece en plasmas parcialmente ionizado
 | $\Psi_0$ (perturbación) | 0.02 |
 | $t_{stop}$ | 60.0 |
 
-### 2.2 Resultados
+### 2.2 Condiciones usadas en PLUTO
+
+En PLUTO la simulacion queda definida por tres archivos principales: `definitions.h`, `init.c` y `pluto.ini`. En este proyecto se usaron los archivos del caso `Current_Sheet`, correspondientes a una lamina de corriente de Harris 2D en Hall MHD. A continuacion se resumen las condiciones mas importantes con el mismo formato del codigo.
+
+#### `definitions.h`: fisica y metodo numerico
+
+```c
+#define  PHYSICS                        MHD
+#define  DIMENSIONS                     2
+#define  GEOMETRY                       CARTESIAN
+#define  RECONSTRUCTION                 LINEAR
+#define  TIME_STEPPING                  RK2
+#define  EOS                            ISOTHERMAL
+#define  DIVB_CONTROL                   DIV_CLEANING
+#define  RESISTIVITY                    NO
+#define  HALL_MHD                       EXPLICIT
+
+#define  USER_DEF_PARAMETERS            3
+#define  ETA                            0
+#define  WIDTH                          1
+#define  PSI0                           2
+
+#define  LIMITER                        VANLEER_LIM
+```
+
+Estas opciones fijan el modelo fisico antes de compilar. `PHYSICS MHD` indica que se resuelven las ecuaciones magnetohidrodinamicas; `HALL_MHD EXPLICIT` agrega el termino Hall en la ecuacion de induccion, que es el ingrediente central para estudiar reconexion Hall. Se escogio `DIMENSIONS 2` porque la lamina de Harris necesita variacion en $x$ y $y$: el campo cambia con $y$ y la perturbacion que dispara la reconexion varia en $x$.
+
+La ecuacion de estado `ISOTHERMAL` reduce el problema a presion proporcional a densidad, $P=c_s^2\rho$, evitando resolver una ecuacion de energia adicional. Esto permite concentrar el analisis en la dinamica magnetica y en el efecto Hall. `TIME_STEPPING RK2`, `RECONSTRUCTION LINEAR` y `VANLEER_LIM` dan un esquema de segundo orden suficientemente estable para capturar gradientes en la lamina sin introducir oscilaciones numericas fuertes. `DIV_CLEANING` se selecciono para controlar errores de $\nabla\cdot\mathbf{B}$ durante la evolucion.
+
+Los parametros `ETA`, `WIDTH` y `PSI0` se leen desde `pluto.ini`. En la corrida principal `ETA` queda definido pero no se usa porque `RESISTIVITY` esta en `NO`; se conserva como parte de la plantilla del problema y para facilitar comparaciones con corridas resistivas.
+
+#### `init.c`: condicion inicial
+
+```c
+double cs2 = 0.5, b0 = 1.0, l, Psi0;
+
+l = g_inputParam[WIDTH];
+v[RHO] = 0.2 + 1.0/(cosh(y/l)*(cosh(y/l)));
+
+#if HAVE_ENERGY
+  v[PRS] = cs2*v[RHO];
+#else
+  g_isoSoundSpeed = sqrt(cs2);
+#endif
+
+v[VX1] = 0.0;
+v[VX2] = 0.0;
+v[VX3] = 0.0;
+
+v[BX1] = b0*tanh(y/l);
+v[BX2] = 0.0;
+v[BX3] = 0.0;
+
+Lx = g_domEnd[IDIR] - g_domBeg[IDIR]; kx = CONST_PI/Lx;
+Ly = g_domEnd[JDIR] - g_domBeg[JDIR]; ky = CONST_PI/Ly;
+
+Psi0    = g_inputParam[PSI0];
+v[BX1] += -Psi0*ky*sin(ky*y)*cos(2.0*kx*x);
+v[BX2] +=  Psi0*2.0*kx*sin(2.0*kx*x)*cos(ky*y);
+```
+
+Este archivo define el estado inicial de la simulacion. La densidad
+
+$$
+\rho(y)=0.2+\frac{1}{\cosh^2(y/l)}
+$$
+
+concentra plasma alrededor de $y=0$, justo donde esta la lamina de corriente. El campo
+
+$$
+B_x(y)=B_0\tanh(y/l)
+$$
+
+cambia de signo al cruzar el centro del dominio, produciendo la inversion magnetica caracteristica de una lamina de Harris. La velocidad inicial se toma cero para partir de un equilibrio perturbado y no de un flujo impuesto artificialmente.
+
+El parametro `WIDTH` controla el ancho $l$ de la lamina. Se eligio `WIDTH = 0.5` porque produce una capa suficientemente delgada para formar una corriente intensa, pero todavia resoluble con la malla $256\times128$. El parametro `PSI0` controla la perturbacion magnetica inicial. Se eligio `PSI0 = 0.02` porque es pequena frente al campo principal $B_0=1$: actua como semilla de reconexion sin destruir desde el inicio la configuracion de Harris. Inicialmente `BX3 = 0`; por eso cualquier $B_z$ que aparece despues es una firma de la evolucion Hall y no una condicion impuesta.
+
+#### `pluto.ini`: dominio, tiempo, fronteras y salida
+
+```ini
+[Grid]
+X1-grid    1    -12.8   256   u   12.8
+X2-grid    1     -6.4   128   u    6.4
+X3-grid    1      0.0     1   u    1.0
+
+[Time]
+CFL               0.25
+CFL_max_var       1.1
+tstop             60.0
+first_dt          1.e-4
+
+[Solver]
+Solver            hll
+
+[Boundary]
+X1-beg            periodic
+X1-end            periodic
+X2-beg            reflective
+X2-end            reflective
+X3-beg            outflow
+X3-end            outflow
+
+[Static Grid Output]
+vtk               5.0  -1   single_file
+log               10
+
+[Parameters]
+ETA               2.e-3
+WIDTH             0.5
+PSI0              0.02
+```
+
+El dominio $[-12.8,12.8]\times[-6.4,6.4]$ se eligio para que la lamina quede centrada y haya espacio suficiente para que la perturbacion evolucione sin interactuar inmediatamente con las fronteras verticales. La malla $256\times128$ mantiene la misma resolucion espacial en ambas direcciones, $\Delta x=\Delta y=0.1$, lo cual evita anisotropias numericas innecesarias en el analisis de la reconexion.
+
+Las fronteras periodicas en $x$ son compatibles con la perturbacion senoidal usada en `init.c`. Las fronteras reflectivas en $y$ mantienen confinada la lamina dentro del dominio vertical. En $z$ se usa una sola celda con fronteras de salida porque el problema es 2D, aunque se conservan las tres componentes de velocidad y campo magnetico.
+
+El `CFL = 0.25` es conservador para una corrida Hall MHD explicita, donde las ondas whistler pueden imponer pasos de tiempo pequenos. `first_dt = 1.e-4` evita un primer paso demasiado grande antes de que PLUTO ajuste automaticamente el paso temporal. `tstop = 60.0` permite cubrir la fase inicial, el inicio de reconexion, el crecimiento no lineal y la saturacion aproximada observada en los diagnosticos. El solver `hll` se selecciono por robustez en discontinuidades y capas de corriente. La salida `vtk = 5.0` fue la usada en el log de ejecucion para generar snapshots en $t=0,5,\ldots,60$; esos archivos son los que se postprocesaron con pyPLUTO.
+
+### 2.3 Resultados
 
 La simulación evoluciona la lámina de Harris desde el equilibrio perturbado hasta la reconexión completa:
 
@@ -143,7 +261,7 @@ La simulación evoluciona la lámina de Harris desde el equilibrio perturbado ha
 
 El diagnostico principal se calculo como el flujo reconectado sobre el eje medio, $\int_0^{L_x/2}|B_y(x,0)|dx$. La curva en `analysis/figs/diagnostics_timeseries.png` muestra crecimiento claro desde $t\approx15$ y alcanza $4.55$ en $t=60$. La corriente maxima $|J_z|$ aumenta durante el onset de reconexion, con maximo cercano a $3.08$ en $t\approx25$, y despues decrece cuando la configuracion entra en una fase mas relajada.
 
-### 2.3 Visualización con pyPLUTO
+### 2.4 Visualización con pyPLUTO
 
 Se generaron 13 snapshots cubriendo $t=0$ a $t=60$ con todas las variables fisicas ($\rho$, $P$, $v_x$, $v_y$, $B_x$, $B_y$, $B_z$, $|\mathbf{B}|$). El panel `analysis/figs/pluto_final_all_variables.png` resume el estado final e incluye tambien $J_z=\partial_x B_y-\partial_y B_x$. Como la salida VTK se guardo cada 5 unidades de tiempo, el snapshot mas cercano a $t=57$ es $t=55$; la figura `analysis/figs/jz_fieldlines_t55.png` muestra $J_z$ con lineas de campo magnetico y anotaciones de los puntos O/X.
 
@@ -163,7 +281,7 @@ Se generaron 13 snapshots cubriendo $t=0$ a $t=60$ con todas las variables fisic
 
 **Figura 4.** Diagnosticos especificos del efecto Hall en $t=60$: campo fuera del plano $B_z$, componente fuera del plano del termino Hall $(\mathbf{J}\times\mathbf{B})_z/\rho$ y magnitud del desacoplamiento ion-electron $|\mathbf{v}_e-\mathbf{v}|=|\mathbf{J}|/\rho$, usando $n_e e\simeq\rho$ en las unidades normalizadas de esta corrida.
 
-### 2.4 Interpretacion de los diagnosticos
+### 2.5 Interpretacion de los diagnosticos
 
 Las salidas muestran de forma clara el proceso de reconexion magnetica en una lamina de Harris con Hall MHD. La simulacion empieza cerca de un equilibrio perturbado, luego la lamina se deforma, aparece reconexion y finalmente se alcanza una fase no lineal con islas magneticas.
 
@@ -209,7 +327,7 @@ $$
 
 En $t=60$, usando el O-point central y el X-point lateral mas contrastado, se obtiene $\psi_{A_z}\approx0.915$. Esta cantidad no reemplaza por completo un algoritmo automatico robusto de deteccion de puntos criticos, pero es una medida fisicamente mas cercana al flujo reconectado clasico que la integral global de $|B_y|$.
 
-### 2.5 Evolucion fisica por tiempos
+### 2.6 Evolucion fisica por tiempos
 
 La evolucion visual es coherente con una lamina de corriente de Harris en Hall MHD: inicia en equilibrio, la perturbacion deforma la lamina, aparece una region tipo X-point, crece la reconexion y finalmente se desarrolla una fase no lineal con estructuras magneticas tipo islas/plasmoides.
 
@@ -237,7 +355,7 @@ La evolucion visual es coherente con una lamina de corriente de Harris en Hall M
 
 **$t=50$.** El sistema entra en una fase no lineal. La densidad ya no aparece como una lamina continua sino como acumulaciones localizadas; $B_y$ y $|B|$ muestran estructuras cerradas o tipo isla magnetica; y $J_z$ adquiere una geometria compleja, compatible con regiones tipo X y O. Las velocidades tambien son mas estructuradas, lo que indica que el plasma ya no responde como una perturbacion lineal simple.
 
-### 2.6 Costo computacional y salida de datos
+### 2.7 Costo computacional y salida de datos
 
 La corrida PLUTO fue ejecutada en un solo procesador sobre una malla uniforme $256\times128$. El log de ejecucion registra los siguientes datos:
 
