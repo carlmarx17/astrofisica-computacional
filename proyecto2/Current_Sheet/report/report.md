@@ -5,7 +5,7 @@
 
 ## Resumen y guía de lectura
 
-Este reporte documenta una simulación de reconexión magnética en una lámina de corriente de Harris usando Hall MHD con PLUTO. La parte de PLUTO resuelve la evolución física completa; la parte de Python reproduce la condición inicial, calcula diagnósticos y genera las figuras usadas para interpretar la corrida.
+Este reporte documenta una simulación de reconexión magnética en una lámina de corriente de Harris usando Hall MHD con PLUTO. La parte de PLUTO resuelve la evolución física completa de referencia; la parte de Python reproduce la condición inicial, implementa un solver Hall-MHD autocontenido de baja resolución, calcula diagnósticos y genera figuras auxiliares.
 
 El proyecto queda organizado así:
 
@@ -14,7 +14,7 @@ El proyecto queda organizado así:
 | `Current_Sheet/` | Caso principal: configuración PLUTO, análisis, figuras y reporte. |
 | `Current_Sheet/pluto_sim/` | Copia de la configuración usada en la corrida y, si están presentes localmente, salidas VTK/DBL regenerables. |
 | `Current_Sheet/analysis/` | Scripts de postproceso para leer PLUTO, calcular diagnósticos y producir figuras finales. |
-| `Current_Sheet/python_reproduction/` | Reproducción Python de la condición inicial y herramientas de chequeo. |
+| `Current_Sheet/python_reproduction/` | Solver Python independiente, snapshots, diagnósticos y figuras auxiliares. |
 | `Whistler_Waves/` | Configuraciones auxiliares para ondas whistler. |
 | `PLUTO/` | Código PLUTO usado como dependencia externa/local. |
 
@@ -28,11 +28,13 @@ Los resultados centrales son: flujo reconectado final $4.5525$ bajo la métrica 
 | Marco teórico, ecuaciones, condiciones de frontera y contexto físico | Secciones 1.1-1.5. | Cumplido |
 | Reproducir una simulación PLUTO completa | Secciones 2.1-2.7 y archivos `Current_Sheet/init.c`, `definitions_01.h`, `pluto_01.ini`. | Cumplido |
 | Graficar variables físicas con pyPLUTO | Secciones 2.4, 2.6 y script `analysis/plot_results.py`. | Cumplido |
-| Implementación Python independiente | `python_reproduction/hall_mhd_harris.py` reproduce la condición inicial y el postproceso; no implementa un solver Hall-MHD completo. | Parcial |
+| Implementación Python independiente | `python_reproduction/hall_mhd_harris.py` implementa un solver Hall-MHD 2.5D autocontenido con diferencias finitas, RK2, snapshots, CSV y figuras. | Cumplido |
 | Comparación PLUTO vs Python y errores | Secciones 4.1-4.4 y `analysis/analysis.py`. | Cumplido para la condición inicial y diagnósticos |
 | Discusión de limitaciones, fuentes de error y mejoras | Sección 5. | Cumplido |
 
-La principal diferencia frente al enunciado ideal es que la parte Python no reemplaza a PLUTO como solver evolutivo Hall-MHD. En este trabajo Python se usa como reproducción independiente del setup y como herramienta de análisis cuantitativo. Un solver Hall-MHD completo requiere un esquema conservativo 2D con Riemann solver, control estricto de $\nabla\cdot\mathbf{B}$ y tratamiento estable del término Hall; por eso se declara explícitamente como mejora futura.
+La parte Python ahora tambien evoluciona el problema, pero no debe interpretarse como una copia numerica de PLUTO: usa diferencias finitas centradas, RK2, difusion explicita pequena y evolucion por potencial vectorial $A_z$ para mantener $\nabla\cdot\mathbf{B}$ controlado. PLUTO sigue siendo la referencia de alta resolucion y el solver Python funciona como implementacion independiente, reproducible y modificable para estudiar el mismo setup.
+
+La ultima corrida Python regenerada fue una configuracion intermedia estable, con malla $128\times64$, $t_{\rm stop}=10$ y salidas cada $\Delta t=2$. Esta corrida produjo snapshots `.npz`, mapas 2D con $\nabla\cdot B$, `python_hall_mhd_diagnostics.csv`, `python_hall_mhd_timeseries.png`, `run_metadata.json` y `evolution.gif`. El resultado final fue: flujo reconectado unsigned $0.06308$, $\max |J_z|=1.59347$, $\max |B_z|=0.01290$ y $||\nabla\cdot B||_2=9.18\times10^{-17}$.
 
 ---
 
@@ -379,13 +381,192 @@ El tiempo de compilacion no fue medido con una herramienta externa como `time ma
 
 ### 3.1 Implementación
 
-El script `hall_mhd_harris.py` implementa el pipeline Python usado para reproducir y analizar el problema:
-1. **Setup**: condicion inicial de Harris sheet con los mismos parametros de PLUTO.
-2. **Cantidades derivadas**: flujo reconectado, corriente $J_z$, divergencia de $\mathbf{B}$ y perfiles 1D.
-3. **Visualizacion**: comparacion inicial/final, evolucion temporal y perfiles.
-4. **Chequeo numerico**: medicion de $\nabla\cdot\mathbf{B}$ y comparacion directa entre la condicion inicial Python y el snapshot $t=0$ de PLUTO.
+El script `hall_mhd_harris.py` implementa una simulacion Python independiente del problema. No usa `pyPLUTO` ni lee snapshots de PLUTO: construye la malla, inicializa la lamina de Harris, evoluciona una version Hall-MHD 2.5D con diferencias finitas, guarda snapshots y calcula diagnosticos propios. Es una implementacion educativa y autocontenida; PLUTO sigue siendo la referencia numerica conservativa de alta resolucion.
 
-El solver evolutivo completo Hall-MHD se deja a PLUTO; la parte Python reproduce la condicion inicial y el post-procesamiento con diferencias finitas, lo cual permite validar setup y diagnosticos sin reimplementar todo el modulo Hall de PLUTO.
+#### 3.1.1 Variables evolucionadas
+
+El estado numerico se guarda en la clase `State`:
+
+| Variable | Significado |
+|----------|-------------|
+| `rho` | Densidad $\rho$. |
+| `vx`, `vy`, `vz` | Componentes de velocidad $\mathbf{v}$. |
+| `az` | Potencial vectorial fuera del plano $A_z$. |
+| `bz` | Campo magnetico fuera del plano $B_z$. |
+
+El campo magnetico dentro del plano no se evoluciona directamente. Se reconstruye desde $A_z$:
+
+$$
+B_x=\frac{\partial A_z}{\partial y}, \qquad B_y=-\frac{\partial A_z}{\partial x}.
+$$
+
+Con esta eleccion, la divergencia del campo dentro del plano queda controlada por construccion:
+
+$$
+\nabla\cdot\mathbf{B}_{xy}
+=\frac{\partial B_x}{\partial x}+\frac{\partial B_y}{\partial y}
+=\frac{\partial^2 A_z}{\partial x\partial y}
+-\frac{\partial^2 A_z}{\partial y\partial x}\approx0.
+$$
+
+Esto no es el mismo constrained transport de PLUTO, pero evita que el solver Python genere errores grandes de $\nabla\cdot\mathbf{B}$ en el campo in-plane.
+
+#### 3.1.2 Condicion inicial
+
+La condicion inicial reproduce la lamina de Harris. En el script, los parametros principales son modificables desde la linea de comandos: `--cs2`, `--b0`, `--width`, `--psi0`, `--hall-coeff`, `--eta`, `--nu`, `--eta-h`, `--nu-h`, `--cfl` y `--cfl-hall`.
+
+$$
+\rho(x,y)=0.2+\operatorname{sech}^2(y/l),
+$$
+
+$$
+A_z(x,y)=B_0\,l\,\log\left[\cosh(y/l)\right]
++\Psi_0\cos(k_y y)\cos(2k_x x),
+$$
+
+donde
+
+$$
+k_x=\frac{\pi}{L_x}, \qquad k_y=\frac{\pi}{L_y}.
+$$
+
+Al derivar $A_z$ se obtiene el campo de Harris perturbado:
+
+$$
+B_x \approx B_0\tanh(y/l)-\Psi_0 k_y\sin(k_y y)\cos(2k_x x),
+$$
+
+$$
+B_y \approx 2\Psi_0 k_x\sin(2k_x x)\cos(k_y y).
+$$
+
+La velocidad inicial y $B_z$ empiezan en cero. La perturbacion $\Psi_0$ se puede cambiar con `--psi0`.
+
+#### 3.1.3 Ecuaciones que resuelve el script
+
+La evolucion Python usa una forma no conservativa e isotermica de Hall-MHD. La continuidad se integra como
+
+$$
+\frac{\partial \rho}{\partial t}
+=-\nabla\cdot(\rho\mathbf{v})
++0.25\nu\nabla^2\rho-\nu_h\nabla^4\rho.
+$$
+
+Las velocidades se actualizan con adveccion centrada, fuerza de presion isotermica y fuerza de Lorentz:
+
+$$
+\frac{\partial \mathbf{v}}{\partial t}
+=-(\mathbf{v}\cdot\nabla)\mathbf{v}
+-c_s^2\frac{\nabla\rho}{\rho}
+\frac{\mathbf{J}\times\mathbf{B}}{\rho}
+\nu\nabla^2\mathbf{v}-\nu_h\nabla^4\mathbf{v}.
+$$
+
+La corriente se calcula como
+
+$$
+\mathbf{J}=\nabla\times\mathbf{B}.
+$$
+
+El termino Hall entra a traves de un flujo electromotriz efectivo:
+
+$$
+\mathbf{F}=\mathbf{v}\times\mathbf{B}
+-d_i\frac{\mathbf{J}\times\mathbf{B}}{\rho},
+$$
+
+donde `hall_coeff` representa $d_i$ en unidades normalizadas. Luego se evoluciona
+
+$$
+\frac{\partial A_z}{\partial t}
+=F_z+\eta\nabla^2 A_z-\eta_h\nabla^4 A_z,
+$$
+
+$$
+\frac{\partial B_z}{\partial t}
+=\frac{\partial F_y}{\partial x}-\frac{\partial F_x}{\partial y}
+\eta\nabla^2B_z-\eta_h\nabla^4B_z.
+$$
+
+Los terminos $\eta$, $\nu$, $\eta_h$ y $\nu_h$ no pretenden reproducir exactamente la fisica de PLUTO; funcionan como regularizacion numerica para un esquema centrado explicito.
+
+#### 3.1.4 Discretizacion numerica
+
+El dominio es cartesiano y uniforme:
+
+$$
+L_x=25.6,\qquad L_y=12.8.
+$$
+
+Las derivadas en $x$ son periodicas con `np.roll`. Las derivadas en $y$ usan extrapolacion lineal de celdas fantasma. Esta decision fue importante porque el padding constante en $A_z$ anulaba artificialmente la pendiente de frontera y producia una capa de corriente numerica cerca de los bordes.
+
+El avance temporal usa RK2 predictor-corrector:
+
+1. Calcular $k_1=\mathrm{RHS}(U^n)$.
+2. Predecir $U^\ast=U^n+\Delta t\,k_1$.
+3. Calcular $k_2=\mathrm{RHS}(U^\ast)$.
+4. Corregir $U^{n+1}=\frac{1}{2}(U^n+U^\ast+\Delta t\,k_2)$.
+
+El paso temporal toma el minimo entre cuatro restricciones:
+
+$$
+\Delta t_{\rm MHD}\propto \frac{\Delta x}{c_f+|\mathbf{v}|},
+$$
+
+$$
+\Delta t_{\rm Hall}\propto \frac{\Delta x^2}{d_i|\mathbf{B}|/\rho},
+$$
+
+$$
+\Delta t_{\rm diff}\propto \frac{\Delta x^2}{\eta+\nu},
+\qquad
+\Delta t_{\rm hyper}\propto \frac{\Delta x^4}{\eta_h+\nu_h}.
+$$
+
+La restriccion Hall es la mas costosa: al duplicar la resolucion lineal, $\Delta t_{\rm Hall}$ baja aproximadamente por un factor 4.
+
+#### 3.1.5 Fronteras y regularizacion
+
+Las fronteras son periodicas en $x$ y reflectivas en $y$. En `apply_boundaries()`:
+
+| Campo | Tratamiento en $y$ |
+|-------|---------------------|
+| $\rho$, $v_x$, $v_z$, $B_z$ | Copia de la primera celda interior. |
+| $v_y$ | Se fija a cero en la pared. |
+| $A_z$ | Extrapolacion lineal: $A_{z,0}=2A_{z,1}-A_{z,2}$ y $A_{z,-1}=2A_{z,-2}-A_{z,-3}$. |
+
+La hiperdisipacion se implementa con
+
+$$
+\nabla^4 a=\frac{\partial^4 a}{\partial x^4}
++\frac{\partial^4 a}{\partial y^4},
+$$
+
+y se agrega como $-\eta_h\nabla^4$ o $-\nu_h\nabla^4$. En espacio de Fourier, este termino amortigua escalas de alto numero de onda de forma proporcional a $k^4$.
+
+#### 3.1.6 Diagnosticos y salidas
+
+El script calcula en cada snapshot:
+
+| Diagnostico | Definicion |
+|-------------|------------|
+| Flujo reconectado | $\int_0^{L_x/2}|B_y(x,0)|\,dx$. |
+| Corriente maxima | $\max |J_z|$. |
+| Divergencia | $||\nabla\cdot\mathbf{B}||_2$. |
+| Equilibrio de fuerza | $||-\nabla p+\mathbf{J}\times\mathbf{B}||_2$. |
+| Firma Hall | $\max |B_z|$, $\max |v_z|$, $\max |(\mathbf{J}\times\mathbf{B})_z/\rho|$. |
+| Energia | Promedios de energia cinetica y magnetica. |
+
+Las salidas principales son:
+
+| Archivo | Contenido |
+|---------|-----------|
+| `python_hall_mhd_*.npz` | Snapshots comprimidos con malla y campos. |
+| `python_hall_mhd_*_t*.png` | Paneles 2D con $\rho$, velocidades, campos, $J_z$, $|B|$ y $\nabla\cdot B$. |
+| `python_hall_mhd_diagnostics.csv` | Diagnosticos por tiempo. |
+| `python_hall_mhd_timeseries.png` | Series temporales de flujo, corriente, divergencia, $B_z$, residual de fuerza y $\rho_{\min}$. |
+| `run_metadata.json` | Comando, parametros, malla, celdas por ancho de lamina y diagnostico final. |
+| `evolution.gif` | Animacion de $\rho$, $J_z$ y $|B|$. |
 
 ### 3.2 Estructura del proyecto y función de cada código
 
@@ -403,8 +584,8 @@ El proyecto se organizo para separar cuatro responsabilidades: archivos de entra
 | `Current_Sheet/analysis/analysis.py` | Script Python | Diagnóstico cuantitativo y comparación. | Lee todos los snapshots, reconstruye la condición inicial analítica, calcula flujo reconectado, $\max |J_z|$, $||\nabla\cdot\mathbf{B}||_2$, errores Python vs PLUTO en $t=0$, CSV y figuras finales del reporte. |
 | `Current_Sheet/analysis/figs/` | Salidas de análisis | Figuras y tablas finales. | Contiene `diagnostics.csv`, `initial_condition_errors.csv`, `diagnostics_timeseries.png`, `pluto_final_all_variables.png`, `jz_fieldlines_t55.png` y `python_pluto_initial_comparison.png`. |
 | `Current_Sheet/plots/` | Salidas gráficas | Paneles temporales completos. | Contiene una imagen por snapshot desde $t=0$ hasta $t=60$ con todas las variables físicas graficadas. |
-| `Current_Sheet/python_reproduction/hall_mhd_harris.py` | Script Python | Reproducción independiente del setup y análisis auxiliar. | Construye la misma malla y condición inicial que PLUTO, define diferencias finitas para $J_z$ y $\nabla\cdot\mathbf{B}$, calcula flujo reconectado y produce gráficas auxiliares. Usa rutas relativas al repositorio. |
-| `Current_Sheet/python_reproduction/output/` | Salidas Python | Figuras auxiliares. | Guarda series temporales, comparación inicial/final, evolución de divergencia y perfiles 1D. |
+| `Current_Sheet/python_reproduction/hall_mhd_harris.py` | Script Python | Solver y analisis Python independiente. | Construye la condicion inicial, evoluciona Hall-MHD 2.5D con diferencias finitas/RK2, reconstruye $\mathbf{B}$ desde $A_z$, calcula diagnosticos y guarda snapshots/figuras. Usa rutas relativas al repositorio. |
+| `Current_Sheet/python_reproduction/output/` | Salidas Python | Productos de la simulacion Python. | Guarda snapshots `.npz`, `python_hall_mhd_diagnostics.csv`, mapas 2D y series temporales. |
 | `Current_Sheet/report/report.md` | Reporte | Documento principal. | Integra teoría, metodología, resultados, comparación, limitaciones, conclusiones y referencias. |
 | `Whistler_Waves/` | Configuraciones PLUTO auxiliares | Otro test Hall MHD. | No es el problema elegido para el reporte; se conserva como referencia porque muestra la propagación de ondas whistler, relacionada con la física Hall. |
 | `PLUTO/` | Dependencia externa local | Código fuente de PLUTO. | Motor numérico usado para compilar y ejecutar la simulación. No se modifica como parte del análisis del proyecto. |
@@ -417,9 +598,9 @@ La simulacion principal se ejecuto con PLUTO hasta $t=60$. Las salidas registrad
 |--------|---------|-------------------------|--------|
 | `analysis/plot_results.py` | Snapshots VTK en `pluto_sim/` | Carga datos con `pyPLUTO`, calcula variables derivadas y grafica cada tiempo. | `plots/hall_cs_*.png` |
 | `analysis/analysis.py` | Snapshots VTK y condición inicial analítica | Calcula diagnósticos, errores relativos L2 y figuras comparativas. | `analysis/figs/*.png`, `analysis/figs/*.csv` |
-| `python_reproduction/hall_mhd_harris.py` | Parámetros del problema y snapshots PLUTO | Reconstruye setup en Python, calcula $J_z$, flujo reconectado, divergencia y perfiles. | `python_reproduction/output/*.png` |
+| `python_reproduction/hall_mhd_harris.py` | Parametros del problema | Ejecuta el solver Python Hall-MHD, guarda snapshots, calcula diagnosticos y grafica la evolucion. | `python_reproduction/output/python_hall_mhd_*` |
 
-**Que se corrio.** Primero se configuro y ejecuto PLUTO para la corrida Hall MHD principal. Luego se corrio `analysis/plot_results.py` para producir las figuras por snapshot. Despues se ejecuto `analysis/analysis.py` para calcular los diagnosticos cuantitativos usados en el reporte. Finalmente, `hall_mhd_harris.py` se uso como reproduccion Python del setup y como apoyo para comparar la condicion inicial y las cantidades derivadas.
+**Que se corrio.** Primero se configuro y ejecuto PLUTO para la corrida Hall MHD principal. Luego se corrio `analysis/plot_results.py` para producir las figuras por snapshot. Despues se ejecuto `analysis/analysis.py` para calcular los diagnosticos cuantitativos usados en el reporte. Finalmente, `hall_mhd_harris.py` se uso como solver Python independiente para evolucionar el mismo setup y generar diagnosticos propios.
 
 Los comandos reproducibles usados para reconstruir el flujo de trabajo son:
 
@@ -452,9 +633,29 @@ python Current_Sheet/analysis/plot_results.py
 # Diagnosticos cuantitativos y figuras finales del reporte
 python Current_Sheet/analysis/analysis.py
 
-# Reproduccion Python del setup y graficas auxiliares
+# Simulacion Python independiente rapida: malla 64x32, t=5
 cd Current_Sheet/python_reproduction
 python hall_mhd_harris.py
+
+# Simulacion Python intermedia larga usada para el analisis regenerado
+python hall_mhd_harris.py \
+  --nx 128 --ny 64 \
+  --tstop 10 --output-dt 2 \
+  --cfl 0.10 --cfl-hall 0.03 \
+  --eta 1.0e-2 --nu 5.0e-3 \
+  --eta-h 3.0e-4 --nu-h 1.0e-4
+
+# Intento largo con baja difusion: no se usa como resultado porque desarrollo overflow.
+python hall_mhd_harris.py --tstop 15 --output-dt 3
+
+# Simulacion Python con malla PLUTO y tiempo corto. Es mucho mas costosa por
+# el paso Hall explicito dt ~ dx^2; se recomienda correrla fuera de esta sesion.
+python hall_mhd_harris.py \
+  --nx 256 --ny 128 \
+  --tstop 5 --output-dt 1 \
+  --cfl 0.10 --cfl-hall 0.03 \
+  --eta 1.0e-2 --nu 5.0e-3 \
+  --eta-h 3.0e-4 --nu-h 1.0e-4
 ```
 
 En la copia versionada, `pluto_sim/` conserva los archivos minimos para documentar la corrida (`pluto.ini`, `definitions.h`, `init.c`, `vtk.out`, `dbl.out`). Los dumps crudos `data.*.vtk`, `data.*.dbl`, `grid.out`, el ejecutable `pluto` y `pluto_run.log` pueden existir localmente para postproceso, pero son artefactos regenerables y se ignoran en git.
@@ -477,6 +678,55 @@ En la copia versionada, `pluto_sim/` conserva los archivos minimos para document
 | $\max |(\mathbf{J}\times\mathbf{B})_z/\rho|$ final | 0.2084 |
 | Estimacion local $\psi_{A_z}=|A_z(O)-A_z(X)|$ | 0.9154 |
 
+### 3.4 Resultados Python regenerados
+
+Despues de ajustar el solver Python se regenero la corrida autocontenida estable con:
+
+```bash
+python Current_Sheet/python_reproduction/hall_mhd_harris.py \
+  --nx 128 --ny 64 \
+  --tstop 10 --output-dt 2 \
+  --cfl 0.10 --cfl-hall 0.03 \
+  --eta 1.0e-2 --nu 5.0e-3 \
+  --eta-h 3.0e-4 --nu-h 1.0e-4
+```
+
+La configuracion efectiva fue $128\times64$, $t_{\rm stop}=10$, $\Delta t_{\rm output}=2$, `hall_coeff=1`, `psi0=0.02`, `cfl=0.10`, `cfl_hall=0.03`, $\eta=10^{-2}$, $\nu=5\times10^{-3}$, $\eta_h=3\times10^{-4}$ y $\nu_h=10^{-4}$. El codigo hizo 42035 pasos explicitos y escribio los productos en `Current_Sheet/python_reproduction/output/`.
+
+Esta malla reduce $\Delta x=\Delta y$ de 0.4 a 0.2, por lo que el ancho de la lamina $l=0.5$ pasa de estar resuelto por 1.25 celdas a 2.5 celdas. Todavia no alcanza las 5-8 celdas recomendables para una Harris sheet fina, pero mejora el equilibrio discreto inicial: el residual $-\nabla p+\mathbf{J}\times\mathbf{B}$ bajo de $4.26\times10^{-2}$ en una prueba $64\times32$ a $1.40\times10^{-2}$ en esta corrida.
+
+| t | paso | flujo unsigned | $\max \lvert J_z\rvert$ | $\max \lvert B_z\rvert$ | $\max \lvert v_z\rvert$ | $||\nabla\cdot B||_2$ | residual fuerza L2 | $\rho_{\min}$ | $\rho_{\max}$ |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 0 | 0.03995 | 1.76547 | 0.00000 | 0.00000 | $4.47\times10^{-17}$ | $1.40\times10^{-2}$ | 0.20000 | 1.16104 |
+| 2 | 8371 | 0.03829 | 1.81868 | 0.00964 | 0.00777 | $8.40\times10^{-17}$ | $7.11\times10^{-3}$ | 0.19640 | 1.25716 |
+| 4 | 16754 | 0.03963 | 1.72105 | 0.01028 | 0.02298 | $8.74\times10^{-17}$ | $4.01\times10^{-3}$ | 0.19413 | 1.22256 |
+| 6 | 25203 | 0.04538 | 1.55428 | 0.01038 | 0.02781 | $8.68\times10^{-17}$ | $4.44\times10^{-3}$ | 0.19449 | 1.17919 |
+| 8 | 33637 | 0.05199 | 1.62373 | 0.01059 | 0.02378 | $8.84\times10^{-17}$ | $7.01\times10^{-3}$ | 0.19444 | 1.22401 |
+| 10 | 42035 | 0.06308 | 1.59347 | 0.01290 | 0.02287 | $9.18\times10^{-17}$ | $5.20\times10^{-3}$ | 0.19071 | 1.18995 |
+
+Los archivos generados son:
+
+| Archivo | Contenido |
+|---------|-----------|
+| `python_hall_mhd_0000.npz` a `python_hall_mhd_0005.npz` | Snapshots comprimidos con $\rho$, $\mathbf{v}$, $\mathbf{B}$, $A_z$, tiempo, paso y malla. |
+| `python_hall_mhd_0000_t0.00.png` a `python_hall_mhd_0005_t10.00.png` | Paneles 2D de $\rho$, $v_x$, $v_y$, $B_x$, $B_y$, $B_z$, $J_z$, $|B|$ y $\nabla\cdot B$. |
+| `python_hall_mhd_diagnostics.csv` | Tabla de diagnosticos usada arriba. |
+| `python_hall_mhd_timeseries.png` | Series temporales de flujo reconectado, $\max |J_z|$, divergencia, $\max |B_z|$, residual de fuerza y $\rho_{\min}$. |
+| `run_metadata.json` | Comando ejecutado, parametros, resolucion, celdas por ancho de lamina y diagnostico final. |
+| `evolution.gif` | Animacion con $\rho$, $J_z$ y $|\mathbf{B}|$. |
+
+Visualmente, la mejora mas importante es que desaparece la capa artificial fuerte pegada a las fronteras superior e inferior: el padding/extrapolacion lineal en $y$ respeta la pendiente de $A_z$ y evita partir $B_x$ en la pared. Las franjas horizontales son bastante menores que en $64\times32$, y el mapa agregado de $\nabla\cdot B$ permanece cerca de cero en todo el dominio. En $t=10$ ya se ve una evolucion mas clara que en $t=5$: $B_y$ se ensancha, el patron de velocidades adquiere estructura global y el flujo reconectado sube de $0.03995$ a $0.06308$. Todavia no aparece una isla magnetica como en PLUTO porque la corrida Python sigue siendo temprana y disipativa.
+
+Se intento lanzar la configuracion recomendada $256\times128$, $t_{\rm stop}=5$, `cfl_hall=0.03` y la misma disipacion. La ejecucion fue interrumpida tras aproximadamente 90 s sin completar un snapshot util. Esto no es una inestabilidad fisica; es un coste esperado del esquema Hall explicito, donde $\Delta t_{\rm Hall}\propto \Delta x^2$. La corrida $128\times64$ requirio 42035 pasos para llegar a $t=10$; duplicar la resolucion en cada direccion aumenta el coste por celda y reduce el paso de tiempo.
+
+Tambien se probo una corrida a $t=15$ con menor difusion:
+
+```bash
+python Current_Sheet/python_reproduction/hall_mhd_harris.py --tstop 15 --output-dt 3
+```
+
+Esa corrida produjo un `RuntimeWarning: overflow encountered in add` durante el calculo de la velocidad maxima y fue interrumpida porque el paso de tiempo se volvio inutilmente pequeno. Por eso no se usa como resultado fisico. La conclusion practica es que el arreglo de frontera mejora la apariencia y elimina un artefacto claro, pero el esquema centrado Python sigue necesitando mas difusion, subciclado Hall o un esquema conservativo para correr tiempos comparables a PLUTO sin suavizar tanto la solucion.
+
 ---
 
 ## 4. Analisis Comparativo
@@ -495,7 +745,7 @@ La reproduccion Python de la condicion inicial fue comparada punto a punto contr
 | $B_y$ | $2.60\times10^{-8}$ | $2.33\times10^{-10}$ |
 | $B_z$ | 0 | 0 |
 
-Esto confirma que el setup independiente en Python reproduce los campos iniciales usados por PLUTO hasta precision de salida simple. Esta validacion no prueba una evolucion temporal Python, porque Python no actua aqui como solver evolutivo Hall-MHD. Lo que valida es que la condicion inicial, la malla y los diagnosticos derivados fueron reproducidos correctamente. La figura `analysis/figs/python_pluto_initial_comparison.png` muestra los mapas Python, PLUTO y la diferencia para $\rho$, $B_x$ y $B_y$.
+Esto confirma que el setup independiente en Python reproduce los campos iniciales usados por PLUTO hasta precision de salida simple. Esta validacion prueba la condicion inicial, la malla y los diagnosticos derivados; la evolucion temporal Python se reporta por separado en la seccion 3.4 porque usa otro esquema numerico y una malla mas gruesa. La figura `analysis/figs/python_pluto_initial_comparison.png` muestra los mapas Python, PLUTO y la diferencia para $\rho$, $B_x$ y $B_y$.
 
 ### 4.2 Flujo reconectado y corriente
 
@@ -561,14 +811,57 @@ Esta comparacion no se incluye como resultado cuantitativo porque la corrida no 
 
 | Aspecto | Limitación | Mejora Posible |
 |---------|------------|----------------|
-| **Solver MHD** | Python reproduce setup y analisis, no evoluciona Hall-MHD completo | Implementar HLL/Rusanov 2D con constrained transport |
-| **Término Hall** | No implementado en Python | Añadir $-\nabla \times (\mathbf{J} \times \mathbf{B} / n_e e)$ |
-| **Upwinding** | Diferencias centradas explotan | Usar esquemas upwind (MUSCL-Hancock, PPM) |
-| **Divergencia de B** | Projection method simple | Usar constrained transport (CT) tipo Yee |
-| **Rendimiento** | Python puro es lento | Numba/Cython/Mexwell para aceleración |
+| **Solver MHD** | El solver Python es no conservativo y usa diferencias centradas | Implementar HLL/Rusanov 2D o MUSCL-Hancock conservativo |
+| **Término Hall** | Implementado de forma explicita; impone pasos de tiempo pequenos | Subciclar Hall, usar esquemas semi-implicitos o whistler-stable |
+| **Difusión** | Se usan $\eta$ y $\nu$ pequenas como regularizacion numerica | Hacer estudio de sensibilidad y separar difusion fisica de numerica |
+| **Hiperdisipación** | Agregada como solución a la inestabilidad con $\eta,\nu$ bajos | Ver sección 5.2.1 |
+| **Divergencia de B** | $B_x,B_y$ se reconstruyen desde $A_z$; no es el mismo CT de PLUTO | Implementar constrained transport tipo Yee para todas las componentes |
+| **Rendimiento** | Python puro es lento en la corrida `--pluto-grid` | Numba/Cython/JAX para aceleracion |
 | **AMR** | Sin adaptación de malla | Implementar refinamiento simple |
-| **Validación** | Solo comparación visual | Tests de convergencia, orden del esquema |
-| **Documentación** | Comentarios mínimos | Docstrings, referencias a literatura |
+| **Validación** | Comparacion evolutiva cualitativa frente a PLUTO | Tests de convergencia, tasas de reconexion y errores contra PLUTO |
+| **Documentación** | CLI documentada en el script y README | Separar solver/diagnosticos en modulos y agregar tests unitarios |
+| **Animación** | Generación automática de GIF tras la simulación | Implementado: `make_gif()` crea `evolution.gif` |
+
+#### 5.2.1 Mejoras aplicadas y estado actual
+
+Durante el desarrollo del solver Python se identificaron dos fuentes principales de mala apariencia visual: una condicion fantasma incorrecta para $A_z$ en las fronteras reflectivas y ruido de escala de grilla producido por el esquema centrado.
+
+**Arreglo de frontera.** Antes se usaba `np.pad(..., mode="edge")` para derivadas en $y$. Eso impone una pendiente cero fuera del dominio. Para variables con frontera realmente plana funciona, pero para $A_z$ es incorrecto porque $B_x=\partial_y A_z$ no debe anularse en la pared; debe saturar cerca de $\pm B_0$. El padding plano reducia artificialmente la derivada de $A_z$ en la ultima celda y generaba una capa espuria de corriente cerca de las fronteras superior e inferior. La version actual usa extrapolacion lineal:
+
+```python
+def _pad_y_linear(a, n):
+    left = a[:, :1]
+    right = a[:, -1:]
+    slope_left = left - a[:, 1:2]
+    slope_right = right - a[:, -2:-1]
+    ghosts_left = [left + k*slope_left for k in range(n, 0, -1)]
+    ghosts_right = [right + k*slope_right for k in range(1, n + 1)]
+    return np.concatenate(ghosts_left + [a] + ghosts_right, axis=1)
+```
+
+El cambio conserva una frontera plana cuando el campo realmente es plano, pero mantiene la pendiente de $A_z$ cuando esa pendiente representa $B_x$.
+
+**Cambios adicionales de diagnostico.** La version actual tambien agrega `--psi0` como argumento de linea de comandos, imprime el residual inicial de equilibrio $-\nabla p+\mathbf{J}\times\mathbf{B}$, guarda `force_balance_l2` y `force_balance_abs_max` en el CSV, fija escalas de color para $v_x$, $v_y$, $B_x$, $B_y$, $B_z$, $J_z$ y $\nabla\cdot B$, y agrega el mapa de $\nabla\cdot B$ a cada panel 2D.
+
+**Hiperdisipacion.** Se conserva un operador de 4to orden para amortiguar principalmente las escalas cercanas a Nyquist:
+
+$$
+\partial_t a \supset -\nu_h(\partial_x^4 a+\partial_y^4 a).
+$$
+
+La corrida estable actual usa $128\times64$, $\eta=10^{-2}$, $\nu=5\times10^{-3}$, $\eta_h=3\times10^{-4}$, $\nu_h=10^{-4}$, `cfl=0.10` y `cfl_hall=0.03`. Con esos parametros llega de forma estable a $t=10$, mantiene $||\nabla\cdot B||_2\simeq10^{-16}$ y genera un componente Hall fuera del plano con $\max |B_z|=0.01290$.
+
+**Limitaciones remanentes:**
+- El esquema de diferencias centradas sigue siendo menos preciso que el Godunov HLL de PLUTO
+- La corrida exploratoria `--tstop 15 --output-dt 3` desarrollo overflow y no se considera fisica
+- La corrida recomendada $256\times128$, $t=5$, `cfl_hall=0.03` fue iniciada pero no completada en esta sesion por coste; no se reporta como resultado fisico
+- La corrida `--pluto-grid` (256×128, t=60) es computacionalmente muy costosa en Python puro por el CFL Hall explicito
+- Las ecuaciones son no conservativas, por lo que no garantizan conservación de masa/momento/energía
+- Para una comparación perfecta con PLUTO se necesitaría un esquema conservativo con constrained transport
+
+**Generación de GIF:**
+
+Al finalizar cada simulación estable, `make_gif()` lee los snapshots `.npz` y genera `evolution.gif` con la evolución temporal de $\rho$, $J_z$ y $|\mathbf{B}|$.
 
 ### 5.3 Análisis
 
@@ -597,11 +890,11 @@ Esta comparacion no se incluye como resultado cuantitativo porque la corrida no 
 
 2. **La evolucion observada muestra firmas compatibles con la fisica Hall**: se genera $B_z$ desde una condicion inicial con $B_z=0$, aparece un termino Hall fuera del plano localizado y se observa desacoplamiento efectivo entre velocidad ionica y electronica. Una afirmacion cuantitativa sobre aceleracion frente a MHD ideal requiere correr la variante `HALL_MHD = NO`.
 
-3. **La implementacion en Python** reproduce la condicion inicial con errores relativos L2 de orden $10^{-8}$ frente a PLUTO, calcula cantidades derivadas (corriente, flujo reconectado, divergencia, $A_z$ y diagnosticos Hall) y genera visualizaciones comparativas.
+3. **La implementacion en Python** ahora evoluciona el mismo setup con un solver Hall-MHD 2.5D autocontenido. Calcula cantidades derivadas (corriente, flujo reconectado, divergencia, $A_z$, energias y diagnosticos Hall), guarda snapshots `.npz` y genera visualizaciones comparativas sin depender de PLUTO.
 
-4. **La principal limitación** es doble: falta una corrida no Hall para aislar cuantitativamente el efecto Hall, y Python no actua como solver evolutivo completo. Un solver MHD+Hall desde cero requiere esquemas numéricos avanzados (Riemann, CT) que van más allá del alcance de este proyecto.
+4. **La principal limitación** es doble: falta una corrida no Hall para aislar cuantitativamente el efecto Hall, y el solver Python no usa el mismo esquema conservativo de PLUTO. Por eso PLUTO sigue siendo la referencia cuantitativa principal, mientras que Python sirve como implementacion independiente y transparente.
 
-5. **Mejoras futuras**: ejecutar la corrida `HALL_MHD = NO`, comparar onset y tasas de reconexion, implementar un calculo local de $E_z$ en el punto X, hacer estudio de convergencia y generar animaciones de la evolucion.
+5. **Mejoras futuras**: ejecutar la corrida `HALL_MHD = NO`, comparar onset y tasas de reconexion, implementar un calculo local de $E_z$ en el punto X, hacer estudio de convergencia, acelerar el solver Python y mejorar las animaciones.
 
 ---
 

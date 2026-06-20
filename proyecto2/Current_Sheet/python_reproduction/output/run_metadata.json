@@ -1,0 +1,86 @@
+{
+  "created_utc": "2026-06-20T11:18:38.022351+00:00",
+  "command": [
+    "Current_Sheet/python_reproduction/hall_mhd_harris.py",
+    "--nx",
+    "128",
+    "--ny",
+    "64",
+    "--tstop",
+    "10",
+    "--output-dt",
+    "2",
+    "--cfl",
+    "0.10",
+    "--cfl-hall",
+    "0.03",
+    "--eta",
+    "1.0e-2",
+    "--nu",
+    "5.0e-3",
+    "--eta-h",
+    "3.0e-4",
+    "--nu-h",
+    "1.0e-4"
+  ],
+  "parameters": {
+    "lx": 25.6,
+    "ly": 12.8,
+    "nx": 128,
+    "ny": 64,
+    "tstop": 10.0,
+    "output_dt": 2.0,
+    "cfl": 0.1,
+    "cfl_hall": 0.03,
+    "cs2": 0.5,
+    "b0": 1.0,
+    "width": 0.5,
+    "psi0": 0.02,
+    "hall_coeff": 1.0,
+    "eta": 0.01,
+    "nu": 0.005,
+    "eta_h": 0.0003,
+    "nu_h": 0.0001,
+    "rho_floor": 0.05,
+    "max_steps": 1000000,
+    "output_dir": "/home/carlmartx/Documents/astrofisica-computacional/proyecto2/Current_Sheet/python_reproduction/output"
+  },
+  "grid": {
+    "dx": 0.2,
+    "dy": 0.2,
+    "cells_per_sheet_width": 2.5,
+    "domain": {
+      "lx": 25.6,
+      "ly": 12.8
+    }
+  },
+  "outputs": {
+    "snapshot_count": 6,
+    "diagnostics_csv": "python_hall_mhd_diagnostics.csv",
+    "timeseries_png": "python_hall_mhd_timeseries.png",
+    "gif": "evolution.gif"
+  },
+  "final_diagnostics": {
+    "time": 10.0,
+    "step": 42035,
+    "flux_signed": 0.06308280963903257,
+    "flux_unsigned": 0.06308280963903257,
+    "jz_abs_max": 1.5934691846381797,
+    "jz_l2": 0.4118344043990437,
+    "divB_l2": 9.181929039912028e-17,
+    "force_balance_l2": 0.005200872448818483,
+    "force_balance_abs_max": 0.009476143314895302,
+    "rho_min": 0.1907118051532511,
+    "rho_max": 1.189946212968784,
+    "B_abs_max": 0.9894048906746183,
+    "Bz_abs_max": 0.01289976805944664,
+    "vz_abs_max": 0.022873568470724262,
+    "hall_z_abs_max": 0.006207624611703332,
+    "kinetic_energy": 7.909526842759547e-05,
+    "magnetic_energy": 0.4316009344137078
+  },
+  "notes": [
+    "Python finite-difference Hall-MHD run; PLUTO remains the quantitative reference.",
+    "The explicit Hall timestep scales approximately as dx^2."
+  ]
+}

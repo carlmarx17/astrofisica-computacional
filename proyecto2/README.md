@@ -18,7 +18,9 @@ Este repositorio contiene la simulacion y el analisis de reconexion magnetica en
 │   │   ├── plot_results.py            # Paneles por snapshot
 │   │   └── figs/                      # Figuras y CSV usados en el reporte
 │   ├── plots/                         # Paneles temporales t=0,...,60
-│   ├── python_reproduction/           # Reproduccion Python del setup y diagnosticos
+│   ├── python_reproduction/           # Simulacion Python Hall-MHD y diagnosticos
+│   │   ├── hall_mhd_harris.py         # Solver Hall-MHD 2.5D autocontenido
+│   │   └── output/                    # Snapshots, GIF, figuras y CSV
 │   └── report/report.md               # Reporte tecnico en Markdown
 ├── Whistler_Waves/                    # Configuraciones PLUTO para ondas whistler
 ├── PLUTO/                             # Codigo PLUTO local usado como dependencia externa
@@ -36,9 +38,18 @@ python Current_Sheet/analysis/plot_results.py
 # Diagnosticos, tablas CSV y figuras finales del reporte
 python Current_Sheet/analysis/analysis.py
 
-# Reproduccion Python de la condicion inicial y graficas auxiliares
+# Simulacion Python independiente en una malla reducida rapida (64x32, t=5)
 cd Current_Sheet/python_reproduction
 python hall_mhd_harris.py
+
+# Simulacion Python mas larga y amortiguada, util para pruebas hasta t=15
+python hall_mhd_harris.py --long-run
+
+# Simulacion Python con parametros personalizados
+python hall_mhd_harris.py --nx 128 --ny 64 --tstop 60 --output-dt 10 --eta 0.02 --nu 0.01
+
+# Simulacion Python con la misma malla, tiempo y cadencia de PLUTO
+python hall_mhd_harris.py --pluto-grid
 ```
 
 Para repetir la corrida con PLUTO, define `PLUTO_DIR` apuntando a la instalacion local de PLUTO y usa los archivos `Current_Sheet/definitions_01.h`, `Current_Sheet/pluto_01.ini` e `Current_Sheet/init.c`. El reporte incluye el bloque completo de comandos y la interpretacion fisica de los resultados.
@@ -48,6 +59,9 @@ Para repetir la corrida con PLUTO, define `PLUTO_DIR` apuntando a la instalacion
 - La corrida Hall MHD llega hasta `t=60` en una malla `256 x 128`.
 - El flujo reconectado usado como diagnostico global alcanza `4.5525`.
 - La corriente maxima llega a `max |J_z| = 3.0819` cerca de `t=25`.
-- La reproduccion Python de la condicion inicial coincide con PLUTO con errores relativos L2 de orden `1e-8`.
+- La simulacion Python ahora evoluciona el mismo setup con un solver Hall-MHD 2.5D autocontenido con hiperdisipacion de 4to orden para estabilidad con baja difusion. Por defecto usa una corrida reducida para iterar rapido; `--pluto-grid` usa `256 x 128`, `tstop=60` y salidas cada `5`.
+- La simulacion Python genera automaticamente un GIF animado de la evolucion en `output/evolution.gif`.
 
-Los productos finales mas importantes estan en `Current_Sheet/analysis/figs/` y se referencian desde `Current_Sheet/report/report.md`.
+## Notas sobre el solver Python
+
+El script `hall_mhd_harris.py` implementa un solver educativo de diferencias finitas centradas. A diferencia de PLUTO (Godunov HLL), este esquema requiere disipacion artificial para estabilidad. Se soluciono agregando **hiperdisipacion de 4to orden** ($\nu_h\nabla^4$) que disipa solo escalas de grilla sin suprimir la reconexion fisica. Ver seccion 5.2.1 del reporte para detalles.

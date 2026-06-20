@@ -19,13 +19,24 @@ astrofisica-computacional/
 │   ├── tareas_resueltas.md        ← Índice unificado con resúmenes
 │   └── notebooks/                 ← Jupyter notebooks de cada tarea (01–15)
 │
-├── proyecto/                      ← Proyecto final: Viento Solar de Parker
+├── proyecto/                      ← Proyecto 1: Viento Solar de Parker
 │   ├── README.md                  ← Documentación completa del proyecto
 │   ├── constantes.py              ← Constantes físicas (SI)
 │   ├── analitico.py               ← Solución semi-analítica (búsqueda de raíces)
 │   ├── solucionadores_numericos.py ← Integradores Euler y RK4 (sin scipy ODE)
 │   ├── generar_notebook.py        ← Constructor programático del notebook
 │   └── viento_solar_parker.ipynb  ← Reporte principal
+│
+├── proyecto2/                     ← Proyecto 2: Reconexión Magnética Hall MHD
+│   ├── README.md                  ← Documentación completa del proyecto
+│   ├── Current_Sheet/             ← Lámina de corriente de Harris con PLUTO
+│   │   ├── init.c                 ← Condición inicial de Harris
+│   │   ├── definitions_01.h       ← Configuración Hall MHD
+│   │   ├── pluto_01.ini           ← Parámetros de la corrida
+│   │   ├── analysis/              ← Postproceso y figuras
+│   │   ├── python_reproduction/   ← Solver Hall-MHD 2.5D en Python
+│   │   └── report/report.md       ← Reporte técnico
+│   └── Whistler_Waves/            ↑ Configuraciones para ondas whistler
 │
 └── README.md                      ← Estás aquí
 ```
@@ -68,4 +79,23 @@ semi-analítica por búsqueda de raíces (método de Brent).
 
 ---
 
-*Repositorio activo · Última actualización: abril 2026*
+## 🚀 Proyecto 2: Reconexión Magnética Hall MHD
+
+Simulación de reconexión magnética en una lámina de corriente de Harris usando
+Hall MHD con el código PLUTO. Incluye un solver educativo Hall-MHD 2.5D en Python
+con hiperdisipación de 4to orden y diagnósticos cuantitativos (flujo reconectado,
+corriente máxima, tasa de reconexión).
+
+**Resultados clave** (malla 256×128, $t = 60$):
+
+| Cantidad | Valor |
+|----------|-------|
+| Flujo reconectado | 4.55 |
+| Corriente máxima $\max\|J_z\|$ | 3.08 (cerca de $t = 25$) |
+| Tasa de reconexión máxima | 0.18 |
+
+👉 Documentación completa: [`proyecto2/README.md`](proyecto2/README.md)
+
+---
+
+*Repositorio activo · Última actualización: junio 2026*
