@@ -161,7 +161,7 @@ ruta_fl_cache = os.path.join(RUTA_DATOS, 'fl_raw.csv')
 if os.path.exists(ruta_ar_cache) and os.path.exists(ruta_fl_cache):
     print("Usando caché local (data/ar_raw.csv, data/fl_raw.csv).")
     df_ar_crudo = pd.read_csv(ruta_ar_cache)
-    df_fl_crudo = pd.read_csv(ruta_fl_cache)
+    df_fl_crudo = pd.read_csv(ruta_fl_cache, low_memory=False)
 else:
     print("No hay caché — consultando el HEK en vivo (varios minutos)...")
     df_ar_crudo = consultar_hek_por_meses('AR', filtro_frm='NOAA SWPC Observer')
@@ -199,6 +199,7 @@ def normalizar_clase_hale(texto_crudo):
     return '-'.join(t.capitalize() for t in tokens_sin_repetir)
 
 
+df_ar_crudo = df_ar_crudo.copy()  # desfragmenta el DataFrame antes de insertar la columna nueva
 df_ar_crudo['clase_hale'] = df_ar_crudo['ar_mtwilsoncls'].apply(normalizar_clase_hale)
 
 print("Clases magnéticas antes de limpiar (crudo, top 5):")
@@ -546,12 +547,15 @@ ax.set_title(f'Distribución de clases magnéticas de Hale (N = {len(df)} region
 plt.tight_layout()
 plt.show()
 """)
-md(r"""**Interpretación:** La mayoría de las regiones activas caen en clases
-simples (`Alpha`, `Beta`), consistente con que la mayor parte del flujo
-magnético emergente forma configuraciones bipolares sencillas. Las clases
-complejas (`Beta-Gamma`, `Beta-Gamma-Delta`) son minoritarias pero
-desproporcionadamente importantes: son las que veremos concentrar las
-fulguraciones más energéticas en los paneles siguientes.
+md(r"""**Interpretación:** En esta muestra predominan las configuraciones
+magnéticas complejas, especialmente `Beta-Gamma-Delta` (43.5%) y
+`Beta-Gamma` (30.4%). En conjunto representan cerca del 74% de las
+regiones analizadas, mientras que las clases simples (`Alpha`, `Beta`)
+suman apenas ~7.8%. Este resultado **no debe generalizarse** a toda la
+población solar: la ventana corresponde a solo cuatro meses cercanos al
+máximo del ciclo solar 24 (cuando emergen más regiones complejas que en
+mínimo solar), y además usamos la clase *dominante* durante el tránsito
+visible de cada región, no cada observación diaria individual.
 """)
 
 # ── Panel 2: Scatter área vs fulguraciones + ajuste lineal ─────────────────
@@ -577,11 +581,16 @@ plt.show()
 
 print(f"Pendiente: {pendiente:.2e} fulguraciones/Mm^2  (R^2 = {r_valor**2:.3f}, p = {p_valor:.2e})")
 """)
-md(r"""**Interpretación:** Existe una correlación positiva entre el área de
-la región y su número de fulguraciones: más área suele implicar más flujo
-magnético libre disponible para reconectar. La dispersión es grande —el área
-por sí sola no determina la actividad; la topología magnética (clase de
-Hale) importa al menos tanto como el tamaño, como veremos en el panel 4.
+md(r"""**Interpretación:** Existe una asociación positiva y
+estadísticamente significativa entre el área de la región y su número de
+fulguraciones (R² = 0.71). Esta línea de ajuste es **descriptiva**: resume
+la tendencia de los datos observados, pero no debe leerse como un modelo
+causal ni predictivo. El número de fulguraciones es una variable de
+conteo (no continua) con un par de regiones muy activas que pesan mucho
+en el ajuste, y no se controló por otros factores como la clase
+magnética. La dispersión es grande —el área por sí sola no determina la
+actividad; la topología magnética (clase de Hale) importa al menos tanto
+como el tamaño, como veremos en el panel 4.
 """)
 
 # ── Panel 3: Histograma flujo pico + ley de potencia ───────────────────────
@@ -613,10 +622,12 @@ plt.show()
 
 print(f"Índice de la ley de potencia (pendiente en log-log): {-pendiente_ley:.2f}")
 """)
-md(r"""**Interpretación:** La distribución decae con el flujo, cualitativamente
-consistente con la estadística de fulguraciones solares (frecuencia
-decreciente con la energía liberada). El índice obtenido **no** debe
-compararse directamente con los índices de Crosby et al. (1993) (~1.5–2.5):
+md(r"""**Interpretación:** La distribución presenta una disminución
+aproximadamente compatible con una tendencia de ley de potencia, pero el
+ajuste aquí es **exploratorio** y no equivale a estudiar rigurosamente la
+distribución completa de todas las fulguraciones. El índice obtenido
+**no** debe compararse directamente con los índices de Crosby et al.
+(1993) (~1.5–2.5):
 esos trabajos ajustan la distribución de **todas** las fulguraciones
 individuales, mientras que aquí graficamos solo el flujo **máximo por
 región activa** (una fulguración por AR, la más fuerte de su tránsito) —
@@ -659,21 +670,37 @@ manchas más extensas.
 md(r"""### Panel 5 — Número de regiones activas por rotación de Carrington""")
 code(r"""conteo_rotacion = df.groupby('rotacion_carrington')['noaa_ar'].nunique().sort_index()
 
+# Las rotaciones en los bordes de la ventana de consulta (2014-01-01 a
+# 2014-05-01) están cubiertas solo parcialmente: la consulta corta la
+# primera y la última rotación de Carrington a la mitad. Las marcamos con
+# otro color para no confundir un efecto de borde del muestreo con una
+# señal física real.
+es_borde = [r == conteo_rotacion.index.min() or r == conteo_rotacion.index.max()
+            for r in conteo_rotacion.index]
+colores_barra = ['lightgray' if borde else 'mediumseagreen' for borde in es_borde]
+
 fig, ax = plt.subplots(figsize=(8, 5))
 ax.bar(conteo_rotacion.index.astype(str), conteo_rotacion.values,
-       color='mediumseagreen', edgecolor='black')
+       color=colores_barra, edgecolor='black')
 ax.set_xlabel('Rotación de Carrington')
 ax.set_ylabel('Número de regiones activas nuevas')
 ax.set_title('Regiones activas observadas por rotación solar (Carrington)')
+from matplotlib.patches import Patch
+ax.legend(handles=[Patch(facecolor='mediumseagreen', edgecolor='black', label='Rotación completa'),
+                    Patch(facecolor='lightgray', edgecolor='black', label='Rotación parcial (borde de la consulta)')])
 plt.tight_layout()
 plt.show()
 """)
 md(r"""**Interpretación:** El número de regiones nuevas por rotación
-(~27.3 días) fluctúa de una rotación a otra — refleja tanto la variabilidad
-intrínseca de la emergencia de flujo cerca del máximo solar como el hecho de
-que solo vemos la mitad del Sol en cada instante. No se espera una tendencia
-monótona en una ventana de 4 meses; para ver el ciclo solar completo (11
-años) se necesitaría extender la consulta a todo el ciclo 24.
+(~27.3 días) varía entre 19 y 27 en la ventana estudiada. **Las rotaciones
+de los extremos (en gris) están cubiertas solo parcialmente**: la consulta
+empieza el 2014-01-01 y termina el 2014-05-01, cortando a la mitad la
+primera y la última rotación de Carrington del rango — su conteo más bajo
+puede deberse simplemente a que se observó menos tiempo de esa rotación, no
+a una diferencia física real en la tasa de emergencia de flujo. No debe
+interpretarse como tendencia del ciclo solar sin corregir este efecto de
+borde; para eso se necesitaría extender la consulta a rotaciones completas
+o al ciclo 24 completo (11 años).
 """)
 
 # ── Panel 6: Correlación de Pearson ────────────────────────────────────────
@@ -710,7 +737,9 @@ Reunimos los seis paneles anteriores en una sola figura de 3×2 y la
 guardamos como `dashboard.pdf`, el entregable pedido por el enunciado.
 """)
 
-code(r"""fig, axes = plt.subplots(3, 2, figsize=(14, 16))
+code(r"""from matplotlib.patches import Patch
+
+fig, axes = plt.subplots(3, 2, figsize=(14, 16))
 fig.suptitle('Dashboard: Regiones Activas Solares (HEK, 2014-01 a 2014-05)',
              fontsize=16, fontweight='bold')
 
@@ -748,11 +777,14 @@ axes[1, 1].set_xlabel('Clase magnética'); axes[1, 1].set_ylabel(r'Área (Mm$^2$
 axes[1, 1].set_title('Área por clase magnética')
 axes[1, 1].tick_params(axis='x', rotation=20)
 
-# 5) Serie temporal — AR por rotación de Carrington
+# 5) Serie temporal — AR por rotación de Carrington (bordes = cobertura parcial)
 axes[2, 0].bar(conteo_rotacion.index.astype(str), conteo_rotacion.values,
-               color='mediumseagreen', edgecolor='black')
+               color=colores_barra, edgecolor='black')
 axes[2, 0].set_xlabel('Rotación de Carrington'); axes[2, 0].set_ylabel('N° regiones nuevas')
 axes[2, 0].set_title('Regiones activas por rotación solar')
+axes[2, 0].legend(handles=[Patch(facecolor='mediumseagreen', edgecolor='black', label='Completa'),
+                            Patch(facecolor='lightgray', edgecolor='black', label='Parcial (borde)')],
+                   fontsize=8)
 
 # 6) Heatmap — correlación de Pearson
 sns.heatmap(matriz_corr, annot=True, fmt='.2f', cmap='coolwarm', vmin=-1, vmax=1,
@@ -774,32 +806,52 @@ md(r"""## Etapa 5 · Resumen de hallazgos
 
 **Hallazgos principales:**
 
-1. Las clases magnéticas simples (`Alpha`, `Beta`) dominan numéricamente el
-   catálogo, pero las clases complejas (`Beta-Gamma-Delta`) concentran una
-   fracción desproporcionada del área y del flujo de rayos X pico.
-2. El área en disco correlaciona positivamente con el número de
-   fulguraciones asociadas (R² moderado) — el tamaño ayuda a predecir la
-   actividad, pero no la determina por completo.
-3. La distribución del flujo GOES pico sigue aproximadamente una ley de
-   potencia, consistente con la fenomenología estándar de fulguraciones
-   solares.
+1. En esta muestra predominan las configuraciones magnéticas **complejas**:
+   `Beta-Gamma-Delta` y `Beta-Gamma` juntas son ~74% de las regiones,
+   mientras que las clases simples (`Alpha`, `Beta`) suman apenas ~7.8%.
+   Esto no debe generalizarse a la población solar completa — depende
+   fuertemente de la fase del ciclo solar cubierta por la ventana (ver
+   limitaciones).
+2. El área en disco muestra una asociación positiva y estadísticamente
+   significativa con el número de fulguraciones (R² = 0.71). Es una
+   relación **descriptiva**, no un modelo predictivo ni una prueba de
+   causalidad: el número de fulguraciones es una variable de conteo con
+   pocos puntos extremos que dominan el ajuste, y no se controló por
+   clase magnética ni por otros factores.
+3. La distribución del flujo GOES pico muestra una disminución
+   aproximadamente compatible con una tendencia de ley de potencia, pero
+   el ajuste aquí es **exploratorio**: usamos solo 71 regiones, 12
+   intervalos, y el flujo *máximo* por región (no la distribución
+   completa de fulguraciones individuales), así que no equivale a
+   demostrar rigurosamente el comportamiento de ley de potencia.
 4. La complejidad magnética (clase de Hale) se asocia con áreas medianas
-   mayores, apoyando el vínculo físico entre topología magnética y tamaño
-   de la región.
-5. En una ventana de solo 4 meses no se observa una tendencia clara del
-   número de regiones nuevas por rotación de Carrington ni de la latitud
-   heliográfica — se necesitaría el ciclo solar completo para verlo.
+   mayores, consistente con el vínculo físico entre topología magnética y
+   tamaño de la región.
+5. El número de regiones nuevas por rotación de Carrington varía entre
+   19 y 27 en la ventana estudiada, pero **las rotaciones de los extremos
+   (2145 y 2149) están parcialmente cubiertas**: la consulta empieza el
+   2014-01-01 y termina el 2014-05-01, cortando a la mitad la primera y la
+   última rotación solar del rango. Parte de la variación observada es
+   este efecto de borde del muestreo, no necesariamente una señal física
+   real; no debe interpretarse como tendencia del ciclo solar sin
+   corregirlo.
 
 **Limitaciones:**
 
 - El catálogo NOAA/SWPC solo ve el hemisferio visible desde la Tierra:
   regiones que emergen y decaen en la cara oculta nunca se registran.
-- La ventana de 4 meses es corta para las conclusiones sobre evolución del
-  ciclo solar (ítems 5 y el panel de correlación con latitud).
+- La ventana de 4 meses es corta para conclusiones sobre evolución del
+  ciclo solar, y sus rotaciones de Carrington extremas están truncadas por
+  los bordes de la consulta (hallazgo 5).
 - El ajuste de ley de potencia en el panel 3 usa pocos bins (muestra
-  limitada) y no aplica un método riguroso de máxima verosimilitud —una
-  extensión natural sería usar la librería `powerlaw` de Alstott et al.
-  (2014) para un ajuste estadísticamente más robusto.
+  limitada), es puramente exploratorio (hallazgo 3), y no aplica un método
+  riguroso de máxima verosimilitud —una extensión natural sería usar la
+  librería `powerlaw` de Alstott et al. (2014) para un ajuste
+  estadísticamente más robusto sobre la distribución completa de
+  fulguraciones.
+- La regresión lineal del panel 2 es descriptiva; no se validó como
+  modelo predictivo (sin conjunto de prueba separado) ni se controló por
+  variables de confusión como la clase magnética.
 
 **Posibles análisis de seguimiento:**
 

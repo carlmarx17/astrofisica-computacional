@@ -46,7 +46,10 @@ proyecto3/
 │   └── fl_raw.csv                  ← Caché: fulguraciones (todas, con ar_noaanum)
 │
 ├── report/
-│   └── report.md / report.pdf      ← Reporte corto (3-5 páginas)
+│   ├── report.md                   ← Fuente del reporte (introducción, métodos, resultados, conclusiones)
+│   ├── report.pdf                  ← Reporte corto (4 páginas), generado con pandoc + weasyprint
+│   ├── style.css                   ← Estilo de márgenes/tipografía para el PDF
+│   └── figures/dashboard-1.png     ← Figura del dashboard embebida en el reporte
 │
 ├── requirements.txt                ← Dependencias exactas (pip freeze verificado)
 └── README.md                       ← Estás aquí
@@ -155,6 +158,14 @@ Si `data/ar_raw.csv` y `data/fl_raw.csv` ya existen, el paso 3 tarda
 segundos. Si los borras, la Etapa 1 vuelve a consultar el HEK en vivo
 (~15 minutos para la ventana de 4 meses).
 
+**Para regenerar `report/report.pdf`** (no requiere las dependencias de
+`requirements.txt`, solo `pandoc` y `weasyprint`):
+
+```bash
+pip install --user weasyprint
+cd report && pandoc report.md -o report.pdf --pdf-engine=weasyprint -c style.css
+```
+
 ---
 
 ## Resultados Clave de un Vistazo
@@ -167,10 +178,20 @@ Corrida real con datos del HEK (2014-01-01 a 2014-05-01):
 | Regiones activas NOAA distintas | 115 |
 | Regiones con ≥1 fulguración asociada | 71 |
 | Área en disco: mínima / media / máxima | 30.4 / 492.4 / 4809.0 Mm² |
-| Clase magnética dominante | Beta-Gamma-Delta (43.5%) |
-| Correlación área–fulguraciones | R² = 0.71 (p = 2.8×10⁻³²) |
+| Clases magnéticas complejas (Beta-Gamma + Beta-Gamma-Delta) | ~74% de la muestra (Alpha+Beta: ~7.8%) — no generalizable, ver nota abajo |
+| Asociación área–fulguraciones (descriptiva) | R² = 0.71 (p = 2.8×10⁻³²) |
 | Flujo GOES pico más alto del período | 4.9×10⁻⁴ W/m² (X4.9, NOAA AR 11990 — coincide con la fulguración X4.9 real del 25 de febrero de 2014) |
 | Correlación área–número de manchas | Pearson r = 0.93 |
+
+**Notas de interpretación importantes** (ver el cuaderno para el detalle):
+el predominio de clases complejas es específico de esta ventana de 4 meses
+cerca del máximo del ciclo solar 24 y no debe generalizarse; la regresión
+área–fulguraciones es descriptiva, no un modelo causal ni predictivo; el
+ajuste de ley de potencia del flujo GOES (Panel 3) es exploratorio (usa
+solo el flujo máximo por región, no la distribución completa de
+fulguraciones); y las rotaciones de Carrington en los bordes de la consulta
+(2145, 2149) están parcialmente muestreadas, por lo que su menor conteo
+puede ser un efecto de borde y no una señal física real.
 
 **Tres hallazgos de calidad de datos** encontrados inspeccionando los CSV
 crudos (documentados con detalle en el cuaderno):
