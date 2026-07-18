@@ -159,7 +159,31 @@ segundos. Si los borras, la Etapa 1 vuelve a consultar el HEK en vivo
 
 ## Resultados Clave de un Vistazo
 
-*(se completa tras correr el cuaderno con los datos reales del HEK)*
+Corrida real con datos del HEK (2014-01-01 a 2014-05-01):
+
+| Cantidad | Valor |
+|---|---|
+| Filas diarias recuperadas (AR) | 890 (0 descartadas en cortes de calidad) |
+| Regiones activas NOAA distintas | 115 |
+| Regiones con ≥1 fulguración asociada | 71 |
+| Área en disco: mínima / media / máxima | 30.4 / 492.4 / 4809.0 Mm² |
+| Clase magnética dominante | Beta-Gamma-Delta (43.5%) |
+| Correlación área–fulguraciones | R² = 0.71 (p = 2.8×10⁻³²) |
+| Flujo GOES pico más alto del período | 4.9×10⁻⁴ W/m² (X4.9, NOAA AR 11990 — coincide con la fulguración X4.9 real del 25 de febrero de 2014) |
+| Correlación área–número de manchas | Pearson r = 0.93 |
+
+**Tres hallazgos de calidad de datos** encontrados inspeccionando los CSV
+crudos (documentados con detalle en el cuaderno):
+
+1. `area_atdiskcenter` del HEK ya viene en km² (no en "millonésimas de
+   hemisferio solar" como reporta NOAA originalmente) — se detectó por la
+   cuantización de los valores en pasos de exactamente 10 MSH.
+2. El campo "canónico" de clase magnética del HEK (`ar_noaaclass`) está
+   completamente vacío; hubo que usar `ar_mtwilsoncls` con una limpieza por
+   expresión regular (guiones faltantes entre componentes).
+3. `ar_noaanum` y el flujo numérico de fulguraciones nunca coexisten en la
+   misma fila del HEK; el flujo se reconstruyó desde la clase GOES en texto
+   (`fl_goescls`) con la escala estándar A–X.
 
 ---
 

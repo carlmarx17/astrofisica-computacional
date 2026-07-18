@@ -58,6 +58,7 @@ X4.9 del 25 de febrero de 2014).
 
 code(r"""%matplotlib inline
 import os
+import re
 import sqlite3
 import datetime
 import warnings
@@ -79,11 +80,13 @@ os.makedirs(RUTA_DATOS, exist_ok=True)
 FECHA_INICIO = '2014-01-01'
 FECHA_FIN    = '2014-05-01'   # 4 meses, cerca del máximo del ciclo solar 24
 
-# Conversión de área: NOAA/SWPC reporta el área de manchas en "millonésimas
-# de hemisferio solar" (MSH). 1 hemisferio solar = 2π R_sol².
-RADIO_SOL_KM = 696_000.0
-MM2_POR_MSH  = (2 * np.pi * RADIO_SOL_KM**2) / 1e6 * 1e-6   # Mm² por 1 MSH
-print(f"1 MSH equivale a {MM2_POR_MSH:.3f} Mm^2")
+# Conversión de área: el campo 'area_atdiskcenter' del HEK ya viene en km^2
+# (es un parámetro derivado por el propio HEK, distinto del área cruda que
+# NOAA reporta en "millonésimas de hemisferio solar", MSH). Lo confirmamos
+# viendo que los valores están cuantizados en pasos de ~3.04e7 km^2 — que es
+# exactamente 10 MSH expresadas en km^2 (1 MSH = 2π R_sol²/1e6 ≈ 3.04e6 km^2),
+# la resolución mínima con la que NOAA reporta área de manchas.
+KM2_POR_MM2 = 1e-6   # 1 Mm^2 = 1e6 km^2
 """)
 
 
@@ -128,11 +131,10 @@ def consultar_hek_por_meses(tipo_evento, filtro_frm=None, fecha_ini=FECHA_INICIO
     '''Consulta el HEK mes a mes (el servidor es más confiable con
     ventanas cortas) y concatena los resultados en un solo DataFrame.'''
     from sunpy.net import hek, attrs as a
-    from astropy.table import vstack
 
     cliente = hek.HEKClient()
     meses = pd.date_range(fecha_ini, fecha_fin, freq='MS')
-    tablas = []
+    dfs = []
 
     for inicio, fin in zip(meses[:-1], meses[1:]):
         args = [a.Time(inicio.date().isoformat(), fin.date().isoformat()),
@@ -142,12 +144,15 @@ def consultar_hek_por_meses(tipo_evento, filtro_frm=None, fecha_ini=FECHA_INICIO
         resultado = cliente.search(*args)
         print(f"  {tipo_evento} {inicio.date()} .. {fin.date()}: {len(resultado)} filas")
         if len(resultado) > 0:
-            tablas.append(resultado)
+            # Convertimos a pandas mes a mes: concatenar Tables de astropy
+            # con columnas SkyCoord de distinto obstime por mes rompe
+            # astropy.table.vstack ("Input coords are inconsistent").
+            dfs.append(resultado.to_pandas())
 
-    if not tablas:
+    if not dfs:
         raise QueryError(f"El HEK no devolvió eventos de tipo {tipo_evento!r}")
 
-    return vstack(tablas).to_pandas()
+    return pd.concat(dfs, ignore_index=True)
 
 
 ruta_ar_cache = os.path.join(RUTA_DATOS, 'ar_raw.csv')
@@ -167,20 +172,47 @@ else:
 if len(df_ar_crudo) == 0:
     raise QueryError('No se recuperaron regiones activas — revisa los parámetros')
 
-columnas_esperadas_ar = {'ar_noaanum', 'ar_noaaclass', 'hgs_x', 'hgs_y',
+columnas_esperadas_ar = {'ar_noaanum', 'ar_mtwilsoncls', 'hgs_x', 'hgs_y',
                           'area_atdiskcenter', 'ar_numspots', 'event_starttime'}
 faltantes = columnas_esperadas_ar - set(df_ar_crudo.columns)
 assert not faltantes, f"Faltan columnas esperadas en el HEK: {faltantes}"
 
 n_antes = len(df_ar_crudo)
 
+
+def normalizar_clase_hale(texto_crudo):
+    '''Limpia la clase magnética de Hale/Mt. Wilson reportada por NOAA/SWPC.
+
+    Descubrimos inspeccionando los datos que el campo `ar_noaaclass` del HEK
+    viene *completamente vacío* para este catálogo, y que el campo que sí
+    trae la clasificación (`ar_mtwilsoncls`) tiene un defecto de origen: a
+    veces el guion entre componentes se pierde y quedan tokens pegados
+    (p. ej. 'BETAAGAMMA-DELTA' en vez de 'BETA-GAMMA-DELTA', o
+    'BETA-DELTA-DELTA' con el componente duplicado). Reconstruimos la clase
+    canónica extrayendo los tokens válidos (ALPHA/BETA/GAMMA/DELTA) con una
+    expresión regular y eliminando duplicados consecutivos.
+    '''
+    tokens = re.findall(r'ALPHA|BETA|GAMMA|DELTA', str(texto_crudo).upper())
+    tokens_sin_repetir = [t for i, t in enumerate(tokens) if i == 0 or t != tokens[i - 1]]
+    if not tokens_sin_repetir:
+        return None
+    return '-'.join(t.capitalize() for t in tokens_sin_repetir)
+
+
+df_ar_crudo['clase_hale'] = df_ar_crudo['ar_mtwilsoncls'].apply(normalizar_clase_hale)
+
+print("Clases magnéticas antes de limpiar (crudo, top 5):")
+print(df_ar_crudo['ar_mtwilsoncls'].value_counts().head())
+print("\nClases magnéticas después de limpiar:")
+print(df_ar_crudo['clase_hale'].value_counts())
+
 # Cortes de calidad: sin número NOAA, sin clase magnética o sin coordenadas
 # heliográficas, el registro no sirve para el análisis físico.
-df_ar_limpio = df_ar_crudo.dropna(subset=['ar_noaanum', 'ar_noaaclass', 'hgs_x', 'hgs_y'])
+df_ar_limpio = df_ar_crudo.dropna(subset=['ar_noaanum', 'clase_hale', 'hgs_x', 'hgs_y'])
 df_ar_limpio = df_ar_limpio[df_ar_limpio['ar_noaanum'] > 0]
 
 n_despues = len(df_ar_limpio)
-print(f"Regiones activas (filas diarias): {n_antes} -> {n_despues} tras cortes de calidad")
+print(f"\nRegiones activas (filas diarias): {n_antes} -> {n_despues} tras cortes de calidad")
 print(f"Número de regiones activas NOAA distintas: {df_ar_limpio['ar_noaanum'].nunique()}")
 """)
 
@@ -202,6 +234,19 @@ md(r"""**Preguntas del enunciado:**
   restricción de "cielo" como en un survey estelar — el "campo de visión" es
   literalmente la cara visible del Sol, que rota con período sinódico de
   ~27.3 días).
+
+**Hallazgo inesperado durante la limpieza:** el campo "canónico" de clase
+magnética del HEK (`ar_noaaclass`) viene **completamente vacío** para este
+catálogo — no es un problema de nuestra consulta, es una columna que
+NOAA/SWPC simplemente no puebla en el HEK. La clasificación de
+Hale sí está disponible en `ar_mtwilsoncls`, pero con un defecto de origen:
+a veces se pierde el guion entre componentes y quedan tokens pegados
+(`"BETAAGAMMA-DELTA"` en vez de `"BETA-GAMMA-DELTA"`, o componentes
+duplicados como `"BETA-DELTA-DELTA"`). Lo resolvimos reconstruyendo la clase
+canónica con una expresión regular que extrae los tokens válidos
+(Alpha/Beta/Gamma/Delta) y elimina repeticiones consecutivas — ver la
+función `normalizar_clase_hale` arriba. Sin este paso, el 100% de las filas
+se habría descartado en el corte de calidad.
 """)
 
 
@@ -216,7 +261,7 @@ NOAA la observó). Para el análisis estadístico necesitamos **una fila por
 región activa**, con parámetros representativos de toda su vida visible:
 
 - **Área [Mm²]:** el máximo observado (el área pico durante su tránsito,
-  convertida de MSH a Mm²).
+  convertida de km² a Mm²).
 - **Coordenadas heliográficas de Stonyhurst [°]:** las del instante más
   cercano al meridiano central (`|hgs_x|` mínimo) — la medición geométrica
   menos afectada por el escorzo de proyección cerca del limbo.
@@ -228,10 +273,39 @@ región activa**, con parámetros representativos de toda su vida visible:
   con la tabla de fulguraciones (`FL`) por `ar_noaanum`. Una región sin
   fulguraciones asociadas queda con conteo 0 y flujo pico nulo (`NaN`) — esto
   es información física real, no un dato faltante por error.
+
+**Más hallazgos de calidad de datos, encontrados inspeccionando los CSV
+crudos (no la documentación — los datos mismos):**
+
+1. `area_atdiskcenter` **ya viene en km²**, no en "millonésimas de
+   hemisferio solar" (MSH) como reporta NOAA originalmente. Lo notamos
+   porque los valores están cuantizados en pasos de ≈3.04×10⁷ — exactamente
+   10 MSH expresadas en km² (1 MSH ≈ 3.04×10⁶ km², la resolución mínima con
+   la que NOAA reporta área de manchas). Multiplicar por el factor de
+   conversión MSH→Mm² habría inflado las áreas ~3 millones de veces.
+2. Distintos módulos del HEK codifican `ar_noaanum` de forma distinta para
+   las fulguraciones. Solo `SWPC`/`SWPC standard` usan el número NOAA
+   completo (p. ej. 11944, igual que en la tabla de regiones activas); el
+   módulo `SSW Latest Events` reporta un número truncado (NOAA − 10000,
+   p. ej. 1944).
+3. `ar_noaanum` y el flujo numérico `fl_peakflux` (calculado por el módulo
+   automático *Flare Detective*) **nunca aparecen juntos en la misma
+   fila** — son catálogos independientes del mismo evento físico. Las
+   filas de `SWPC` sí traen la clase GOES en texto (`fl_goescls`, p. ej.
+   `"M9.9"`), así que reconstruimos el flujo en W/m² con la escala GOES
+   estándar ($10^{-8}$ a $10^{-4}$ W/m² para clases A–X) en vez de usar la
+   columna numérica.
+
+Sin los ajustes 2 y 3, el cruce por `ar_noaanum` fallaba silenciosamente y
+**cero** fulguraciones quedaban asociadas a alguna región; sin el ajuste 1,
+las áreas habrían sido físicamente absurdas (mayores que la superficie
+total del Sol). Ninguno de los tres produjo un error de Python — un ejemplo
+real de por qué hay que verificar los cortes de calidad con los ojos y no
+solo confiar en que el código corrió sin excepciones.
 """)
 
 code(r"""df_ar_limpio = df_ar_limpio.copy()
-df_ar_limpio['area_mm2'] = df_ar_limpio['area_atdiskcenter'] * MM2_POR_MSH
+df_ar_limpio['area_mm2'] = df_ar_limpio['area_atdiskcenter'] * KM2_POR_MM2
 df_ar_limpio['ar_noaanum'] = df_ar_limpio['ar_noaanum'].astype(int)
 
 # ── Coordenadas representativas: la observación más cercana al meridiano central ──
@@ -248,21 +322,53 @@ picos = df_ar_limpio.groupby('ar_noaanum').agg(
     primera_observacion=('event_starttime', 'min'),
 ).reset_index()
 
-# ── Clase magnética dominante (moda) ────────────────────────────────────────
-clase_dominante = (df_ar_limpio.groupby('ar_noaanum')['ar_noaaclass']
+# ── Clase magnética dominante (moda), ya normalizada en la Etapa 1 ──────────
+clase_dominante = (df_ar_limpio.groupby('ar_noaanum')['clase_hale']
                    .agg(lambda s: s.value_counts().idxmax())
                    .reset_index(name='clase_magnetica'))
 
 df_regiones = picos.merge(coords_centrales, on='ar_noaanum').merge(clase_dominante, on='ar_noaanum')
 
 # ── Fulguraciones asociadas: unir con la tabla FL por número NOAA ───────────
-df_fl_limpio = df_fl_crudo.dropna(subset=['ar_noaanum', 'fl_peakflux'])
+# Dos hallazgos reales de los datos, encontrados inspeccionando fl_raw.csv:
+#
+# 1) El HEK reporta 'ar_noaanum' para fulguraciones desde varios módulos,
+#    pero solo 'SWPC'/'SWPC standard' usan el número NOAA completo (p. ej.
+#    11944). El módulo 'SSW Latest Events' reporta un número truncado
+#    (NOAA - 10000, p. ej. 1944) que rompería silenciosamente el cruce con
+#    la tabla de regiones activas si no se filtra por frm_name.
+#
+# 2) 'ar_noaanum' y 'fl_peakflux' (el flujo numérico calculado por el módulo
+#    automático 'Flare Detective') NUNCA coexisten en la misma fila: son
+#    catálogos independientes del mismo evento físico. Las filas de 'SWPC'
+#    sí traen la clase GOES como texto ('fl_goescls', p. ej. 'M9.9'), así
+#    que reconstruimos el flujo en W/m^2 con la escala GOES estándar en vez
+#    de usar la columna numérica (que aquí siempre es NaN para 'SWPC').
+FLUJO_BASE_GOES = {'A': 1e-8, 'B': 1e-7, 'C': 1e-6, 'M': 1e-5, 'X': 1e-4}
+
+
+def goes_clase_a_flujo(clase_texto):
+    '''Convierte una clase GOES (p. ej. 'M9.9') al flujo pico en W/m^2.'''
+    clase_texto = str(clase_texto).strip().upper()
+    if not clase_texto or clase_texto[0] not in FLUJO_BASE_GOES:
+        return np.nan
+    try:
+        multiplicador = float(clase_texto[1:])
+    except ValueError:
+        return np.nan
+    return FLUJO_BASE_GOES[clase_texto[0]] * multiplicador
+
+
+frm_confiables = df_fl_crudo['frm_name'].isin(['SWPC', 'SWPC standard'])
+df_fl_limpio = df_fl_crudo[frm_confiables].dropna(subset=['ar_noaanum', 'fl_goescls'])
 df_fl_limpio = df_fl_limpio[df_fl_limpio['ar_noaanum'] > 0].copy()
 df_fl_limpio['ar_noaanum'] = df_fl_limpio['ar_noaanum'].astype(int)
+df_fl_limpio['flujo_wm2'] = df_fl_limpio['fl_goescls'].apply(goes_clase_a_flujo)
+df_fl_limpio = df_fl_limpio.dropna(subset=['flujo_wm2'])
 
 resumen_flares = df_fl_limpio.groupby('ar_noaanum').agg(
-    num_fulguraciones=('fl_peakflux', 'count'),
-    flujo_pico_goes=('fl_peakflux', 'max'),
+    num_fulguraciones=('flujo_wm2', 'count'),
+    flujo_pico_goes=('flujo_wm2', 'max'),
 ).reset_index()
 
 df_regiones = df_regiones.merge(resumen_flares, on='ar_noaanum', how='left')
@@ -343,14 +449,14 @@ cur.executemany('''
 metadatos = {
     'fuente': 'HEK (Heliophysics Event Knowledgebase) via SunPy Fido',
     'frm_regiones_activas': 'NOAA SWPC Observer',
-    'evento_fulguraciones': 'FL (todos los módulos, unido por ar_noaanum)',
+    'evento_fulguraciones': 'FL (frm SWPC / SWPC standard, unido por ar_noaanum)',
     'ventana_inicio': FECHA_INICIO,
     'ventana_fin': FECHA_FIN,
     'n_regiones_antes_de_cortes': str(n_antes),
     'n_regiones_despues_de_cortes': str(n_despues),
     'n_regiones_unicas': str(len(df_regiones)),
-    'unidad_area': 'Mm^2 (convertido desde MSH, 1 MSH = %.4f Mm^2)' % MM2_POR_MSH,
-    'unidad_flujo': 'W/m^2 (flujo de rayos X GOES en el pico de la fulguracion)',
+    'unidad_area': 'Mm^2 (area_atdiskcenter del HEK ya viene en km^2; Mm^2 = km^2 * 1e-6)',
+    'unidad_flujo': 'W/m^2, reconstruido desde fl_goescls con la escala GOES estandar (A=1e-8..X=1e-4)',
     'generado_en': marca_tiempo,
 }
 cur.executemany('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)',
@@ -426,10 +532,16 @@ guarda como `dashboard.pdf`.
 md(r"""### Panel 1 — Distribución de clases magnéticas de Hale""")
 code(r"""conteo_clases = df['clase_magnetica'].value_counts()
 
-fig, ax = plt.subplots(figsize=(6, 6))
+fig, ax = plt.subplots(figsize=(7.5, 6))
 colores = sns.color_palette('Set2', len(conteo_clases))
-ax.pie(conteo_clases.values, labels=conteo_clases.index, autopct='%1.1f%%',
-       colors=colores, startangle=90, pctdistance=0.8)
+# Con 8 clases, algunas < 3%: etiquetar solo las porciones grandes en el
+# gráfico y mover el resto a una leyenda para que no se amontonen.
+wedges, _, _ = ax.pie(
+    conteo_clases.values, labels=None,
+    autopct=lambda p: f'{p:.1f}%' if p >= 3 else '',
+    colors=colores, startangle=90, pctdistance=0.8)
+ax.legend(wedges, conteo_clases.index, title='Clase de Hale',
+          loc='center left', bbox_to_anchor=(1.0, 0.5))
 ax.set_title(f'Distribución de clases magnéticas de Hale (N = {len(df)} regiones)')
 plt.tight_layout()
 plt.show()
@@ -463,7 +575,7 @@ ax.legend()
 plt.tight_layout()
 plt.show()
 
-print(f"Pendiente: {pendiente:.4f} fulguraciones/Mm^2  (R^2 = {r_valor**2:.3f}, p = {p_valor:.2e})")
+print(f"Pendiente: {pendiente:.2e} fulguraciones/Mm^2  (R^2 = {r_valor**2:.3f}, p = {p_valor:.2e})")
 """)
 md(r"""**Interpretación:** Existe una correlación positiva entre el área de
 la región y su número de fulguraciones: más área suele implicar más flujo
@@ -501,14 +613,19 @@ plt.show()
 
 print(f"Índice de la ley de potencia (pendiente en log-log): {-pendiente_ley:.2f}")
 """)
-md(r"""**Interpretación:** La distribución de flujos pico decae como una
-ley de potencia, el comportamiento estándar de la estadística de
-fulguraciones solares (frecuencia decreciente con la energía liberada). El
-índice obtenido es comparable en orden de magnitud a los valores
-reportados en la literatura para distribuciones de flujo pico GOES
-(típicamente entre ~1.5 y ~2.5, p. ej. Crosby et al. 1993), aunque nuestra
-muestra —acotada a 4 meses— tiene pocas fulguraciones grandes y por tanto
-el ajuste en la cola es poco confiable.
+md(r"""**Interpretación:** La distribución decae con el flujo, cualitativamente
+consistente con la estadística de fulguraciones solares (frecuencia
+decreciente con la energía liberada). El índice obtenido **no** debe
+compararse directamente con los índices de Crosby et al. (1993) (~1.5–2.5):
+esos trabajos ajustan la distribución de **todas** las fulguraciones
+individuales, mientras que aquí graficamos solo el flujo **máximo por
+región activa** (una fulguración por AR, la más fuerte de su tránsito) —
+una estadística de valores extremos, no la distribución completa de
+eventos. Además, con solo 71 regiones con fulguraciones y 12 bins, el
+ajuste es sensible al binning. Un análisis correcto de la ley de potencia
+de fulguraciones usaría directamente `df_fl_limpio['flujo_wm2']` (todas las
+~800 fulguraciones individuales), no la tabla agregada por región —una
+extensión natural de este trabajo.
 """)
 
 # ── Panel 4: Box plot área por clase magnética ─────────────────────────────
@@ -598,8 +715,12 @@ fig.suptitle('Dashboard: Regiones Activas Solares (HEK, 2014-01 a 2014-05)',
              fontsize=16, fontweight='bold')
 
 # 1) Pie — clases magnéticas
-axes[0, 0].pie(conteo_clases.values, labels=conteo_clases.index, autopct='%1.1f%%',
-               colors=sns.color_palette('Set2', len(conteo_clases)), startangle=90)
+wedges_dash, _, _ = axes[0, 0].pie(
+    conteo_clases.values, labels=None,
+    autopct=lambda p: f'{p:.1f}%' if p >= 3 else '',
+    colors=sns.color_palette('Set2', len(conteo_clases)), startangle=90)
+axes[0, 0].legend(wedges_dash, conteo_clases.index, title='Clase de Hale',
+                   loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=8)
 axes[0, 0].set_title('Distribución de clases magnéticas de Hale')
 
 # 2) Scatter — área vs fulguraciones + ajuste
