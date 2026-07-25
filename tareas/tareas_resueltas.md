@@ -24,6 +24,8 @@
 | 13 | Perfil Temp. Solar | Diferencias finitas, convergencia | [13](notebooks/13_diferencias_finitas_temperatura_solar.ipynb) |
 | 14 | ODEs Orden Superior | Método de disparo, reducción de orden | [14](notebooks/14_metodo_disparo_y_odes_orden_superior.ipynb) |
 | 15 | Temperatura óptima de emisión estelar | Sección áurea, optimización unidimensional | [15](notebooks/15_seccion_aurea_temperatura_optima_emision_estelar.ipynb) |
+| 16 | Enfriamiento de corteza de estrella de neutrones | FTCS, difusión térmica, pérdidas por neutrinos | [16](notebooks/16_diferencias_finitas_enfriamiento_corteza_estrella_neutrones.ipynb) |
+| 17 | Pendientes mayo-julio | Optimización, EDP, FEM, MHD, FITS, SQL, ML, clustering | [17](notebooks/17_tareas_pendientes_mayo_julio.ipynb) |
 
 ---
 
@@ -288,4 +290,43 @@ Dos ejemplos aplicados de clase:
 
 ---
 
-*Última actualización: abril 2026*
+### 16 · Enfriamiento térmico de corteza de estrella de neutrones
+
+**Tema:** EDP parabólicas · FTCS  
+**Notebook:** [`16_diferencias_finitas_enfriamiento_corteza_estrella_neutrones.ipynb`](notebooks/16_diferencias_finitas_enfriamiento_corteza_estrella_neutrones.ipynb)  
+**Script:** [`16_diferencias_finitas_enfriamiento_corteza_estrella_neutrones.py`](notebooks/16_diferencias_finitas_enfriamiento_corteza_estrella_neutrones.py)
+
+Se resuelve la difusión térmica 1D en una corteza de estrella de neutrones:
+
+$$
+\frac{\partial T}{\partial t} = \alpha \frac{\partial^2 T}{\partial z^2} - \epsilon_\nu T^5
+$$
+
+con fronteras de Dirichlet, esquema explícito FTCS y término de enfriamiento por neutrinos.
+
+---
+
+### 17 · Pendientes mayo-julio 2026
+
+**Tema:** Optimización · EDP · FEM · MHD · FITS · SQL · ML  
+**Notebook:** [`17_tareas_pendientes_mayo_julio.ipynb`](notebooks/17_tareas_pendientes_mayo_julio.ipynb)  
+**Script:** [`17_tareas_pendientes_mayo_julio.py`](notebooks/17_tareas_pendientes_mayo_julio.py)  
+**Resumen:** [`17_tareas_pendientes_mayo_julio_resumen.md`](notebooks/17_tareas_pendientes_mayo_julio_resumen.md)
+
+Entrega consolidada para las tareas pendientes detectadas en la lista del profesor:
+
+- Luminosidad de disco de acreción y método del gradiente.
+- Potencial gravitacional en disco protoplanetario con Gauss-Seidel y SOR.
+- FEM 1D para Poisson gravitacional.
+- Advección 1D de campo magnético y onda de Alfvén.
+- Modificación de FITS local, ejercicios SQL, regresiones de ML y clustering fotométrico con DBSCAN.
+
+| Resultado | Valor |
+|-----------|-------|
+| $T_\mathrm{opt}$ | $\approx 30794$ K |
+| SOR disco protoplanetario | 79 iteraciones |
+| DBSCAN | 3 clusters, 5302 puntos de ruido |
+
+---
+
+*Última actualización: julio 2026*
