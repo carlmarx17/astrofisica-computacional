@@ -26,6 +26,6 @@ Thumbs.db
 proyecto2/PLUTO/
 proyecto2/Whistler_Waves/
 
-# PINNsClass: version anterior del deck y artefactos de construccion
-PINNsClass/Presentación de PINNs y Física Solar.pdf
-PINNsClass/figuras/04_entrenamiento_deck.gif
+# PINNsClass: guion privado de la clase
+PINNsClass/guion.*
+PINNsClass/*_con_guion.pptx
