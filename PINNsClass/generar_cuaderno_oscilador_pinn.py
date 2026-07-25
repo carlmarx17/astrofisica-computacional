@@ -1,11 +1,27 @@
 """Genera el cuaderno de clase de PINNs aplicadas a sismologia coronal.
 
+El material se construye en una sola direccion:
+
+    generar_cuaderno_oscilador_pinn.py   (este archivo, la fuente)
+            |  escribe
+            v
+    oscilador_armonico_pinn_fisica_solar.ipynb
+            |  al ejecutarse produce
+            +--> figuras/*.png y figuras/*.gif
+            +--> resultados.json
+                        |  lee
+                        v
+                construir_presentacion.py  -->  .pptx  -->  .pdf
+
+El cuaderno se genera desde aqui, y no se edita a mano, porque un .ipynb ya
+ejecutado son varios MB de imagenes en base64: imposible de revisar en un diff.
+`resultados.json` cumple el mismo papel del lado de la presentacion: el cuaderno
+vuelca ahi cada cifra que el deck cita, de modo que no puedan desincronizarse.
+
 Uso:
     python generar_cuaderno_oscilador_pinn.py
-
-Produce `oscilador_armonico_pinn_fisica_solar.ipynb`. Al ejecutar ese cuaderno
-se crean las figuras en `figuras/`, que a su vez alimentan la presentacion
-(`construir_presentacion.py`).
+    jupyter nbconvert --to notebook --execute --inplace \
+        oscilador_armonico_pinn_fisica_solar.ipynb
 """
 
 import nbformat as nbf
@@ -519,54 +535,94 @@ DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("PyTorch", torch.__version__, "| dispositivo:", DEV)
 
 class MLP(nn.Module):
-    "u_theta(t): aproximador continuo y dos veces diferenciable."
+    # La red NO predice puntos sueltos: ES la solucion propuesta u_theta(t),
+    # una funcion continua del tiempo cuyos parametros vamos a ajustar.
     def __init__(self, hidden=32, layers=3):
         super().__init__()
+        # Entrada: 1 numero (el instante t). Salida: 1 numero (el desplazamiento).
+        # En medio, capas densas con tanh. La activacion DEBE ser suave porque
+        # despues le pediremos a esta funcion su segunda derivada.
         bloques = [nn.Linear(1, hidden), nn.Tanh()]
         for _ in range(layers - 1):
             bloques += [nn.Linear(hidden, hidden), nn.Tanh()]
-        bloques += [nn.Linear(hidden, 1)]
+        bloques += [nn.Linear(hidden, 1)]     # ultima capa sin activacion: salida libre
         self.net = nn.Sequential(*bloques)
 
     def forward(self, t):
-        # normalizacion t -> [-1, 1] DENTRO del modelo:
-        # autograd deriva respecto al t fisico via regla de la cadena
+        # t llega en minutos (0 a 25) y lo reescalamos a [-1, 1], que es donde
+        # tanh trabaja bien. Hacerlo AQUI DENTRO, y no fuera, es lo que permite
+        # que autograd trate la normalizacion como parte de la funcion y aplique
+        # la regla de la cadena solo: las derivadas salen respecto al t fisico,
+        # en 1/min, sin que tengamos que corregir ningun factor a mano.
         return self.net(2.0*t/T_END - 1.0)
 
 def tensor(x, grad=False):
+    # numpy -> tensor columna (N, 1), que es la forma que espera nn.Linear.
+    # grad=True marca el tensor como "voy a derivar respecto a esto"; solo hace
+    # falta en los tiempos donde evaluaremos la ecuacion diferencial.
     x = np.asarray(x, dtype=np.float32).reshape(-1, 1)
     return torch.tensor(x, device=DEV, requires_grad=grad)
 
 def deriv(y, x):
-    "dy/dx manteniendo el grafo, para poder derivar otra vez."
+    # Derivada dy/dx por diferenciacion automatica: recorre el grafo de
+    # operaciones aplicando la regla de la cadena, asi que es exacta (no es una
+    # diferencia finita, no hay error de truncamiento).
+    #   torch.ones_like(y) -> autograd calcula productos vector-jacobiano; con
+    #                         un vector de unos obtenemos la derivada de cada
+    #                         salida respecto a su propia entrada.
+    #   create_graph=True  -> conserva el grafo DE LA DERIVADA. Ese es el truco
+    #                         que nos deja derivar el resultado otra vez y
+    #                         obtener la segunda derivada.
     return torch.autograd.grad(y, x, torch.ones_like(y), create_graph=True)[0]
 
+# Tensores fijos del problema. Los de datos no necesitan gradiente (no derivamos
+# respecto a ellos); los de colocacion e inicial si, porque ahi evaluamos la EDO.
 t_data_t = tensor(t_data)
 u_data_t = tensor(u_data)
 t_col_t  = tensor(t_col, grad=True)
 t_ini_t  = tensor([0.0], grad=True)
 
 def perdidas(model, lam_fis, lam_ci=20.0, obs=None):
+    # El corazon de la PINN: convierte "la red debe obedecer la fisica" en un
+    # numero que un optimizador puede minimizar.
     # Devuelve (total, datos, fisica, condiciones iniciales).
-    # obs=(t_tensor, u_tensor) permite entrenar con OTRAS observaciones sin
-    # tocar nada mas: es el gancho que usan las tareas de la seccion 11.
+    # obs=(t_tensor, u_tensor) permite entrenar con OTRAS observaciones sin tocar
+    # nada mas: es el gancho que usan los miniproyectos de la seccion 11.
     t_obs, u_obs = obs if obs is not None else (t_data_t, u_data_t)
+
+    # (1) DATOS -- la red debe pasar cerca de lo observado.
+    #     Se evalua SOLO en los instantes donde hay medicion.
     l_dat = torch.mean((model(t_obs) - u_obs)**2)
 
     if lam_fis > 0:
+        # (2) FISICA -- aqui la PINN deja de ser una red corriente.
+        #     Evaluamos la red en los puntos de colocacion: instantes repartidos
+        #     por TODO el dominio que no necesitan ningun dato, incluido el hueco
+        #     de cobertura. Es asi como la fisica rellena lo que no se observo.
         u_c = model(t_col_t)
-        du  = deriv(u_c, t_col_t)
-        d2u = deriv(du,  t_col_t)
-        r = (d2u + 2*beta*du + omega0**2*u_c)/omega0**2      # residuo adimensional
+        du  = deriv(u_c, t_col_t)      # velocidad     du/dt
+        d2u = deriv(du,  t_col_t)      # aceleracion   d2u/dt2  (derivamos otra vez)
+
+        #     Metemos esas derivadas en la ecuacion de movimiento. Si la red
+        #     resolviera la EDO, r seria cero en todos los puntos: r mide cuanto
+        #     la incumple. Dividimos por omega0^2 para que r quede en las mismas
+        #     unidades que u, y asi lam_fis no dependa de la escala de tiempo.
+        r = (d2u + 2*beta*du + omega0**2*u_c)/omega0**2
         l_fis = torch.mean(r**2)
 
+        # (3) CONDICIONES INICIALES -- la EDO tiene infinitas soluciones y
+        #     u(0), u'(0) eligen una. Sin este termino la red puede cumplir la
+        #     fisica con la amplitud o la fase equivocadas.
         u_i  = model(t_ini_t)
         du_i = deriv(u_i, t_ini_t)
         l_ci = (u_i - u0).pow(2).mean() + ((du_i - v0)/omega0).pow(2).mean()
     else:
+        # lam_fis = 0 -> modelo CAJA NEGRA: ni ecuacion ni condiciones iniciales.
+        # Todo el bloque de arriba simplemente no se ejecuta.
         l_fis = torch.zeros((), device=DEV)
         l_ci  = torch.zeros((), device=DEV)
 
+    # Suma ponderada: esto es lo unico que el optimizador llega a ver.
     return l_dat + lam_fis*l_fis + lam_ci*l_ci, l_dat, l_fis, l_ci
 
 def generar_observaciones(gap=None, n_antes=9, n_despues=5, sigma=None,
@@ -602,57 +658,71 @@ modelo y animar el entrenamiento en §8.
 """),
     code(r"""
 def entrenar(lam_fis, epochs_adam=6000, lr=5e-3, bloques_lbfgs=20,
-             iter_lbfgs=100, cada=100, seed=7, etiqueta="", obs=None):
-    "Entrena un MLP y guarda instantaneas del modelo para la animacion."
-    torch.manual_seed(seed)
+             iter_lbfgs=100, cada=100, seed=7, etiqueta="", obs=None,
+             lam_ci=20.0):
+    # Ajusta los pesos de la red minimizando perdidas(). Guarda instantaneas del
+    # modelo por el camino para poder animar el entrenamiento en la seccion 8.
+    torch.manual_seed(seed)          # misma inicializacion para ambos modelos
     model = MLP().to(DEV)
 
     t_snap = tensor(t_dense, grad=True)
     snaps, hist = [], []
 
     def instantanea(fase, paso):
+        # Foto del estado actual de la red: u(t) y su velocidad, en toda la
+        # ventana temporal. detach() la saca del grafo (es solo para graficar).
         u = model(t_snap)
         v = deriv(u, t_snap)
         snaps.append(dict(fase=fase, paso=paso,
                           u=u.detach().cpu().numpy().ravel(),
                           v=v.detach().cpu().numpy().ravel()))
 
-    instantanea("adam", 0)
+    instantanea("adam", 0)           # estado antes de entrenar nada
 
-    # --- fase 1: Adam
+    # --- FASE 1: Adam. Robusto y barato; encuentra rapido la cuenca correcta,
+    #     pero se estanca alrededor de 1e-2. El scheduler baja el paso poco a
+    #     poco (cosine annealing) para afinar hacia el final.
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, epochs_adam, eta_min=lr/50)
     t0 = time.perf_counter()
     for ep in range(1, epochs_adam + 1):
-        opt.zero_grad()
-        loss, l_dat, l_fis, l_ci = perdidas(model, lam_fis, obs=obs)
-        loss.backward(); opt.step(); sch.step()
+        opt.zero_grad()                                   # borra gradientes previos
+        loss, l_dat, l_fis, l_ci = perdidas(model, lam_fis, lam_ci=lam_ci, obs=obs)
+        loss.backward()                                   # gradiente respecto a los pesos
+        opt.step()                                        # un paso de descenso
+        sch.step()                                        # actualiza el learning rate
         if ep % cada == 0:
             instantanea("adam", ep)
         if ep % 500 == 0:
             hist.append([ep, loss.item(), l_dat.item(),
                          l_fis.detach().item(), l_ci.detach().item()])
 
-    # --- fase 2: L-BFGS por bloques
+    # --- FASE 2: L-BFGS. Metodo cuasi-Newton: aproxima la curvatura de la
+    #     perdida y por eso refina la solucion de Adam dos o tres ordenes de
+    #     magnitud mas. Es la mitad que suele faltar en los tutoriales de PINNs.
     lbfgs = torch.optim.LBFGS(model.parameters(), max_iter=iter_lbfgs,
                               history_size=60, tolerance_grad=1e-12,
                               tolerance_change=1e-14, line_search_fn="strong_wolfe")
+
+    # L-BFGS reevalua la perdida varias veces por iteracion (busqueda de linea),
+    # asi que hay que darle una funcion que la recalcule, no un valor ya hecho.
     def closure():
         lbfgs.zero_grad()
-        loss, *_ = perdidas(model, lam_fis, obs=obs)
+        loss, *_ = perdidas(model, lam_fis, lam_ci=lam_ci, obs=obs)
         loss.backward()
         return loss
 
+    # Lo corremos en bloques para poder sacar instantaneas entre medias.
     for b in range(1, bloques_lbfgs + 1):
         lbfgs.step(closure)
         instantanea("lbfgs", b*iter_lbfgs)
         if b % 5 == 0:
-            loss, l_dat, l_fis, l_ci = perdidas(model, lam_fis, obs=obs)
+            loss, l_dat, l_fis, l_ci = perdidas(model, lam_fis, lam_ci=lam_ci, obs=obs)
             hist.append([epochs_adam + b*iter_lbfgs, loss.item(), l_dat.item(),
                          l_fis.detach().item(), l_ci.detach().item()])
 
     dt = time.perf_counter() - t0
-    loss, l_dat, l_fis, l_ci = perdidas(model, lam_fis, obs=obs)
+    loss, l_dat, l_fis, l_ci = perdidas(model, lam_fis, lam_ci=lam_ci, obs=obs)
     print(f"[{etiqueta:11s}] {dt:5.1f} s | total {loss.item():.3e} | "
           f"datos {l_dat.item():.3e} | fisica {l_fis.detach().item():.3e}")
     return model, np.array(hist), snaps, dt
@@ -678,19 +748,22 @@ barra de error es sobreajuste, no precisión.
 """),
     code(r"""
 def observables(model):
-    "Devuelve u, v, a y los diagnosticos fisicos derivados de la red."
+    # Audita un modelo ya entrenado. Nada de lo que se calcula aqui se uso
+    # durante el entrenamiento de la caja negra, asi que sirve de juez imparcial.
+    # Volvemos a derivar la red para obtener velocidad y aceleracion.
     t_t = tensor(t_dense, grad=True)
     u = model(t_t)
-    v = deriv(u, t_t)
-    a = deriv(v, t_t)
+    v = deriv(u, t_t)                 # velocidad
+    a = deriv(v, t_t)                 # aceleracion
     u = u.detach().cpu().numpy().ravel()
     v = v.detach().cpu().numpy().ravel()
     a = a.detach().cpu().numpy().ravel()
 
-    residuo = a + 2*beta*v + omega0**2*u          # deberia ser 0
-    E = energia(u, v)
-    dE = np.gradient(E, t_dense)
-    viol = dE + 2*beta*v**2                       # deberia ser 0; >0 = energia creada
+    residuo = a + 2*beta*v + omega0**2*u   # cuanto incumple la ecuacion (0 = perfecta)
+    E = energia(u, v)                      # energia especifica del modelo
+    dE = np.gradient(E, t_dense)           # su tasa de cambio, por diferencias finitas
+    viol = dE + 2*beta*v**2                # ley de disipacion: deberia dar 0.
+                                           # Si sale > 0, el modelo esta CREANDO energia.
     integrar = getattr(np, "trapezoid", None) or np.trapz   # numpy >= 2.0 / anterior
     E_espuria = integrar(np.clip(viol, 0, None), t_dense)/E_exact[0]
     return dict(u=u, v=v, a=a, residuo=residuo, E=E, dE=dE,
@@ -1246,151 +1319,240 @@ print(f"  RMSE en el hueco: caja negra {resumen['metricas']['caja negra']['RMSE 
 """),
     # ------------------------------------------------------------------ 11
     md(r"""
-## 11. Tareas
+## 11. Miniproyectos
 
-Cuatro tareas cortas. Cada una está pensada para **5–10 minutos** y se resuelve
-**reutilizando las funciones del mapa de la §5.3**: no hay que escribir un
-entrenamiento desde cero. Debajo de cada enunciado hay una celda con el croquis
-ya montado y unos pocos `TODO` que completar.
+Cuatro experimentos de **5 a 10 minutos**. La arquitectura ya está montada: la
+función `experimento(...)` hace el recorrido completo —fabrica las
+observaciones, entrena, audita el resultado y lo grafica— y lo único que hay que
+hacer es **cambiarle parámetros y mirar qué pasa**.
 
-Para que corran rápido usamos un presupuesto reducido (`epochs_adam=1500`,
-`bloques_lbfgs=5`). Los resultados salen peores que los de las secciones
-anteriores —el modelo sin física, en particular, queda bastante peor—, pero las
-conclusiones no cambian.
+```python
+experimento("mi prueba", lam_fis=30, n_antes=4, sigma=0.04)
+```
+
+| Parámetro | Qué controla |
+|---|---|
+| `lam_fis` | cuánta física entra en la pérdida (`0` = caja negra) |
+| `n_antes`, `n_despues` | cuántas observaciones hay a cada lado del hueco |
+| `sigma` | ruido de medición, en Mm |
+| `ancho_hueco` | cuántos minutos de cobertura se pierden |
+| `verdad` | qué dinámica generó realmente los datos |
+
+Y `comparar(...)` corre el mismo escenario dos veces, con y sin física, para
+ponerlas lado a lado.
 
 **Qué se entrega:** la celda ejecutada y **dos o tres frases** respondiendo la
-pregunta de cada tarea. La pregunta importa más que el código.
-"""),
-    md(r"""
-### Tarea 1 — ¿Cuánta física hace falta? (5 min)
+pregunta. La pregunta pesa más que el código.
 
-Barre $\lambda_{\rm fis}$ desde 0 (caja negra) hasta un valor enorme y observa
-qué le pasa al error y a la energía espuria.
-
-**Pregunta:** con $\lambda_{\rm fis}$ muy grande la red casi ignora los datos.
-¿Hacia qué solución converge entonces, y por qué esa solución ya no depende del
-ruido de las observaciones?
+> **Una diferencia con las secciones anteriores.** Aquí entrenamos con
+> `lam_ci=0`, es decir **sin regalarle la condición inicial** a la red. Es más
+> realista —nadie conoce $u(0)$ y $\dot u(0)$ exactamente— y hace que los
+> experimentos tengan algo que medir: con la condición inicial impuesta, la
+> física sola ya determina la solución y quitar datos no cambia nada.
+>
+> El presupuesto de entrenamiento también es más corto, para que cada corrida
+> tarde unos diez segundos. Los números salen algo peores que los de la §7.
 """),
     code(r"""
-# --- TAREA 1 -------------------------------------------------------
-valores_lambda = [0.0, 1.0, 30.0]     # TODO 1: agrega un valor enorme, p.ej. 3000
+CENTRO_HUECO = 13.0   # el hueco de cobertura se centra en este instante
 
-filas = []
-for lam in valores_lambda:
-    modelo, _, _, _ = entrenar(lam_fis=lam, epochs_adam=1500, bloques_lbfgs=5,
-                               etiqueta=f"lambda={lam:g}")
+def experimento(etiqueta, lam_fis=LAMBDA_FIS, ancho_hueco=8.0, sigma=None,
+                n_antes=9, n_despues=5, verdad=None, seed=7, lam_ci=0.0,
+                epochs_adam=1500, bloques_lbfgs=5, graficar=True):
+    # Recorrido completo de un experimento, de los datos al diagnostico fisico.
+    # No hay que escribir nada de entrenamiento: solo cambiar los parametros.
+    verdad = solucion_exacta if verdad is None else verdad
+    sigma = sigma_ruido if sigma is None else sigma
+
+    # 1. fabricar las observaciones que tendria el observador
+    gap = (CENTRO_HUECO - ancho_hueco/2, CENTRO_HUECO + ancho_hueco/2)
+    t_obs, u_obs, t_obs_t, u_obs_t = generar_observaciones(
+        gap=gap, n_antes=n_antes, n_despues=n_despues, sigma=sigma,
+        seed=seed, solucion=verdad)
+
+    # 2. entrenar la red con esas observaciones
+    modelo, _, _, _ = entrenar(lam_fis=lam_fis, lam_ci=lam_ci, obs=(t_obs_t, u_obs_t),
+                               epochs_adam=epochs_adam, bloques_lbfgs=bloques_lbfgs,
+                               seed=seed, etiqueta=etiqueta)
+
+    # 3. auditar: error contra la verdad, y respeto de la fisica
     o = observables(modelo)
-    filas.append({
-        "lambda_fis": lam,
-        "RMSE u [Mm]": np.sqrt(np.mean((o["u"] - u_exact)**2)),
-        "energia espuria / E(0)": o["E_espuria"],
-        # TODO 2: agrega aqui el RMSE dentro del hueco (la mascara es mask_gap)
-    })
+    u_ref = verdad(t_dense)
+    # misfit: cuanto se aleja el ajuste de los datos observados. Comparado con
+    # sigma es el test clasico de bondad de ajuste: si el modelo no consigue
+    # bajar al nivel de ruido del instrumento, algo no cuadra.
+    u_en_datos = np.interp(t_obs, t_dense, o["u"])
+    met = {
+        "experimento": etiqueta,
+        "n datos": int(t_obs.size),
+        "RMSE u [Mm]": float(np.sqrt(np.mean((o["u"] - u_ref)**2))),
+        "misfit / sigma": float(np.sqrt(np.mean((u_en_datos - u_obs)**2))/sigma),
+        "RMS residuo": float(np.sqrt(np.mean(o["residuo"]**2))),
+        "energia espuria / E(0)": float(o["E_espuria"]),
+    }
 
-pd.DataFrame(filas).set_index("lambda_fis")
+    # 4. graficar: la curva a la izquierda, el veredicto energetico a la derecha
+    if graficar:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12.5, 4.0))
+        if ancho_hueco > 0:
+            for ax in (ax1, ax2):
+                ax.axvspan(*gap, color="#3a2a1a", alpha=0.8, zorder=0)
+        ax1.plot(t_dense, u_ref, color=C_EXACTA, lw=2.2, label="verdad")
+        ax1.plot(t_dense, o["u"], color=C_PINN, lw=2.0, ls="--", label="modelo")
+        ax1.scatter(t_obs, u_obs, s=34, color=C_DATOS, zorder=3, label="datos")
+        ax1.set_xlabel("t [min]"); ax1.set_ylabel("u [Mm]")
+        ax1.set_ylim(-1.6, 1.6)
+        ax1.set_title(etiqueta); ax1.legend(fontsize=8)
+
+        # la energia de referencia se calcula de la verdad de ESTE experimento,
+        # que no siempre es la solucion lineal (ver miniproyecto 4)
+        E_ref = energia(u_ref, np.gradient(u_ref, t_dense))
+        ax2.plot(t_dense, E_ref/E_ref[0], color=C_EXACTA, lw=2.2, label="verdad")
+        ax2.plot(t_dense, o["E"]/E_ref[0], color=C_PINN, lw=2.0, ls="--", label="modelo")
+        ax2.set_yscale("log"); ax2.set_ylim(1e-4, 10)
+        ax2.set_xlabel("t [min]"); ax2.set_ylabel("E(t)/E(0)")
+        ax2.set_title(f"energia espuria = {100*met['energia espuria / E(0)']:.1f} % de E(0)")
+        ax2.legend(fontsize=8)
+        fig.tight_layout(); plt.show()
+
+    return {**met, "modelo": modelo, "obs": (t_obs, u_obs), "diagnostico": o}
+
+def comparar(etiqueta, **kw):
+    # El mismo escenario con y sin fisica, para ponerlos lado a lado.
+    return [experimento(f"{etiqueta} | caja negra", lam_fis=0.0, graficar=False, **kw),
+            experimento(f"{etiqueta} | PINN",       lam_fis=LAMBDA_FIS, graficar=False, **kw)]
+
+def tabla_de(resultados):
+    # Junta varios experimentos en una tabla, dejando fuera modelos y arrays.
+    cols = [k for k, v in resultados[0].items() if isinstance(v, (int, float, str))]
+    return pd.DataFrame([{k: r[k] for k in cols} for r in resultados]).set_index("experimento")
+
+print("Listo. Prueba:  experimento('mi primera prueba', lam_fis=30)")
 """),
     md(r"""
-### Tarea 2 — ¿Hasta dónde aguanta la física? (10 min)
+### Miniproyecto 1 — ¿Cuánta física conviene meter? (5 min)
 
-La PINN reconstruyó un hueco de 8 minutos. Haz crecer ese hueco y encuentra
-dónde se rompe.
+Solo cambia `lam_fis`. Con 0 tienes la caja negra. Sube hasta un valor
+desproporcionado y mira **la amplitud** de lo que sale, no solo el error.
 
-**Pregunta:** ¿a partir de qué ancho de hueco empieza a fallar también la PINN?
-Compara ese ancho con el período $P$ y con el tiempo de amortiguamiento $\tau$:
-¿cuál de los dos parece marcar el límite?
+**Pregunta:** con `lam_fis` gigantesco la red deja de hacer caso a los datos.
+¿Hacia qué solución converge entonces? Fíjate en que esa solución **también
+satisface la ecuación diferencial**: ¿por qué es una respuesta legítima para la
+pérdida física y aun así inútil?
 """),
     code(r"""
-# --- TAREA 2 -------------------------------------------------------
-anchos = [2.0, 5.0, 8.0]              # TODO 1: agrega un hueco mas ancho (12, 16...)
-centro = 13.0                         # el hueco crece en torno a este instante
+# --- MINIPROYECTO 1 ------------------------------------------------
+valores = [0.0, 1.0, 30.0]        # TODO: agrega un valor desproporcionado, p.ej. 3000
 
-filas = []
-for ancho in anchos:
-    gap = (centro - ancho/2, centro + ancho/2)
-    _, _, t_obs, u_obs = generar_observaciones(gap=gap)
-    modelo, _, _, _ = entrenar(lam_fis=LAMBDA_FIS, epochs_adam=1500,
-                               bloques_lbfgs=5, obs=(t_obs, u_obs),
-                               etiqueta=f"hueco={ancho:g} min")
-    o = observables(modelo)
-    dentro = (t_dense >= gap[0]) & (t_dense <= gap[1])
-    filas.append({
-        "hueco [min]": ancho,
-        "hueco / P": ancho/P_obs,
-        "RMSE dentro del hueco [Mm]": np.sqrt(np.mean((o["u"][dentro] - u_exact[dentro])**2)),
-    })
-    # TODO 2: repite el bucle con lam_fis=0 y compara como se degrada cada modelo
+resultados = [experimento(f"lambda = {lam:g}", lam_fis=lam, graficar=False)
+              for lam in valores]
 
-pd.DataFrame(filas).set_index("hueco [min]")
+# graficamos el ultimo para ver que forma tiene la solucion
+experimento(f"lambda = {valores[-1]:g}", lam_fis=valores[-1])
+
+tabla_de(resultados)
 """),
     md(r"""
-### Tarea 3 — Sismología con tu propia estimación (5 min)
+### Miniproyecto 2 — ¿Cuánto vale la ecuación, medido en datos? (10 min)
 
-Arranca el problema inverso desde una suposición inicial claramente equivocada y
-lleva el resultado hasta el diagnóstico físico.
+Ve quitando observaciones y compara los dos modelos en cada escalón. Empiezas con
+14 puntos y bajas hasta 2.
 
-**Pregunta:** ¿cuánto se desplazan $B$ y $l/a$ respecto a los valores de la §9.1?
-¿Cuál de los dos hereda más error, y de qué parámetro viene?
+**Pregunta:** la caja negra se desmorona; la PINN casi no se entera. ¿Qué
+información aporta la EDO que los datos ya no tienen que aportar? Pista: la
+ecuación es de segundo orden, así que su familia de soluciones tiene **dos**
+parámetros libres (amplitud y fase). ¿Cuántos puntos bastarían, en principio,
+para fijarlos?
 """),
     code(r"""
-# --- TAREA 3 -------------------------------------------------------
-# TODO 1: parte de una suposicion inicial mala (P=8 min, beta=0.02, por ejemplo)
-w_est, b_est, traza, modelo_inv = problema_inverso(
-    seed=5, P_inicial=8.0, beta_inicial=0.02,
-    epochs_adam=3000, bloques_lbfgs=10)
+# --- MINIPROYECTO 2 ------------------------------------------------
+escalones = [(9, 5), (4, 2), (2, 2)]   # TODO: agrega el caso extremo (1, 1) = 2 datos
 
-print(f"omega_0 = {w_est:.4f}   (verdadero {omega0:.4f})")
-print(f"beta    = {b_est:.4f}   (verdadero {beta:.4f})")
+resultados = []
+for n_a, n_d in escalones:
+    resultados += comparar(f"{n_a + n_d} datos", n_antes=n_a, n_despues=n_d)
 
-# TODO 2: convierte a P y tau y pasalos por sismologia() para obtener B y l/a
-omega_d_est = np.sqrt(max(w_est**2 - b_est**2, 1e-12))
-B_tarea, la_tarea = sismologia(2*np.pi/omega_d_est, 1/b_est, "  [tu estimacion]")
+tabla_de(resultados)
 """),
     md(r"""
-### Tarea 4 — Cuando la física impuesta es la equivocada (10 min)
+### Miniproyecto 3 — ¿Y si el instrumento es peor? (5 min)
 
-Esta es la tarea que de verdad importa. Generamos los datos con un
-amortiguamiento **cuadrático** ($\gamma\dot u|\dot u|$, típico de arrastre
-turbulento) y entrenamos la PINN imponiendo el modelo **lineal** de este
-cuaderno.
+Ahora deja los datos fijos y sube el ruido: $\sigma$, $3\sigma$, $10\sigma$.
 
-La red va a devolver un $\beta$ con aspecto perfectamente respetable. No existe
-ningún $\beta$ verdadero con el que compararlo.
+**Preguntas:**
 
-**Pregunta:** con los diagnósticos que ya tienes —ajuste a los datos, residuo,
-energía— ¿cómo detectarías que el modelo físico impuesto es el equivocado, si no
-supieras de antemano cómo se generaron los datos?
+1. El error de la PINN apenas se mueve, mientras el de la caja negra es varias
+   veces mayor y su energía espuria es dos o tres órdenes de magnitud más alta.
+   ¿Por qué el ruido afecta tanto menos a la PINN?
+2. Fíjate en que el error de la caja negra **no crece de forma ordenada** con
+   $\sigma$: da tumbos. Cambia `seed=8` y vuelve a correr. ¿Qué te dice esa
+   inestabilidad sobre qué está aprendiendo realmente ese modelo?
+3. Mira la columna `misfit / sigma`. La PINN se queda cerca de 1 y la caja negra
+   baja mucho por debajo. ¿Por qué ajustar los datos *mejor* que su propia barra
+   de error es una mala señal y no una buena?
 """),
     code(r"""
-# --- TAREA 4 -------------------------------------------------------
-gamma = 0.25                          # coeficiente del amortiguamiento cuadratico
+# --- MINIPROYECTO 3 ------------------------------------------------
+factores = [1, 3]                 # TODO: agrega un instrumento pesimo, factor 10
+
+resultados = []
+for f in factores:
+    resultados += comparar(f"ruido x{f}", sigma=f*sigma_ruido)
+
+tabla_de(resultados)
+"""),
+    md(r"""
+### Miniproyecto 4 — Cuando la física impuesta es la equivocada (10 min)
+
+El más importante de los cuatro. Generamos los datos con un amortiguamiento
+**cuadrático** ($\gamma\dot u|\dot u|$, típico de arrastre turbulento) y
+entrenamos imponiendo el modelo **lineal** de este cuaderno.
+
+La red devolverá un ajuste de aspecto razonable y un $\beta$ perfectamente
+presentable. No existe ningún $\beta$ verdadero con el que compararlo.
+
+**Pregunta:** sin saber de antemano cómo se generaron los datos, ¿qué
+diagnóstico te delataría que el modelo físico impuesto es el equivocado?
+
+Antes de responder, mira las dos columnas de la tabla que imprime la celda:
+
+- el **RMS del residuo** es prácticamente el mismo en los dos casos. Tiene
+  sentido: el residuo solo mide si la red obedece la ecuación que *tú* le
+  impusiste, y eso lo consigue siempre. **El residuo no puede delatar una física
+  equivocada.**
+- el **misfit / sigma** sí cambia. Con la física correcta el ajuste baja hasta el
+  nivel de ruido del instrumento ($\approx1$); con la física equivocada se
+  atasca dos o tres veces por encima, porque ninguna solución de la ecuación
+  lineal puede pasar por esos puntos.
+
+Ese cociente es el test clásico de bondad de ajuste. La conclusión práctica: **un
+modelo que no consigue bajar al nivel de ruido de tus datos te está diciendo que
+el modelo está mal, no los datos.**
+"""),
+    code(r"""
+# --- MINIPROYECTO 4 ------------------------------------------------
+gamma = 0.25                      # TODO: prueba tambien 0.05 (casi lineal) y 0.8
 
 def rhs_nolineal(t, y):
     u, v = y
     return np.array([v, -gamma*v*abs(v) - omega0**2*u], dtype=float)
 
+# la "verdad" ahora es no lineal: la resolvemos con RK4 y la interpolamos
 y_nl = rk4(rhs_nolineal, t_dense, [u0, v0])
-sol_nl = lambda t: np.interp(t, t_dense, y_nl[:, 0])
+verdad_nolineal = lambda t: np.interp(t, t_dense, y_nl[:, 0])
 
-# mismas condiciones de observacion, pero sobre la dinamica no lineal
-t_nl, u_nl, t_nl_t, u_nl_t = generar_observaciones(solucion=sol_nl)
+# entrenamos con la fisica LINEAL, que es la equivocada
+malo = experimento("datos no lineales, fisica lineal", verdad=verdad_nolineal)
+bueno = experimento("datos lineales, fisica correcta", graficar=False)
 
-# ...y entrenamos con el modelo LINEAL, que es el equivocado
-w_est, b_est, _, modelo_nl = problema_inverso(obs=(t_nl_t, u_nl_t),
-                                              epochs_adam=3000, bloques_lbfgs=10)
-print(f"beta estimado = {b_est:.4f}  <- un numero de aspecto respetable")
-print(f"omega_0 estimado = {w_est:.4f}   (el verdadero sigue siendo {omega0:.4f})")
+print(tabla_de([bueno, malo])[["misfit / sigma", "RMS residuo"]])
+print("\nEl residuo apenas distingue los dos casos; el misfit si.")
 
-fig, ax = plt.subplots(figsize=(9.5, 4.2))
-ax.plot(t_dense, y_nl[:, 0], color=C_EXACTA, lw=2.2, label="verdad (no lineal)")
-ax.scatter(t_nl, u_nl, s=38, color=C_DATOS, zorder=3, label="datos")
-# TODO 1: grafica encima la prediccion de modelo_nl (mira como lo hace observables)
-ax.set_xlabel("t [min]"); ax.set_ylabel("u [Mm]")
-ax.set_title("Tarea 4: datos no lineales ajustados con fisica lineal")
-ax.legend(fontsize=9)
-plt.show()
-
-# TODO 2: calcula el residuo con observables(modelo_nl) y compara su RMS
-#         con el de la PINN de la seccion 7. Que te dice esa diferencia?
+# y ahora le pedimos que estime beta, un parametro que en estos datos no existe
+w_est, b_est, _, _ = problema_inverso(
+    obs=(tensor(malo["obs"][0]), tensor(malo["obs"][1])),
+    epochs_adam=3000, bloques_lbfgs=10)
+print(f"\nbeta estimado = {b_est:.4f}  <- respetable, y sin significado fisico")
 """),
     md(r"""
 ## Referencias
